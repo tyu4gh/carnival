@@ -1,4 +1,4 @@
-# Carnival TKL 固件反编译分析 & GIF 屏幕开关键 / 自动休眠补丁
+# Carnival TKL 固件反编译分析 & GIF 屏幕开关键 / 切换键 / 自动休眠补丁
 
 对象：`Carnival_TKL_v5.uf2`（Matrix Lab Carnival TKL，v5 固件）
 
@@ -207,3 +207,25 @@ python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 -o Carnival_TKL_v5_screen.uf2   #
 
 > ✅ 实机验证：只带开关键的版本（不加 `-t`）已在 Carnival TKL 上刷入，按 Screen On/Off 可以正常开关屏幕。
 > 自动休眠（`-t N`）目前只做过反汇编核对和 `emu_test.py` 模拟测试，还没有实机验证。
+
+## 4. GIF 切换键（SCR_NXT / SCR_PRV）
+
+原厂的 `SCR_MOD`（`0x080227D8`）只是在两种播放模式之间切换（`S.mode = (S.mode + 1) & 1`）：
+
+* `0`：单个循环，播完调 `anim_rewind`（`0x080272C2`），一直重播当前 GIF；
+* `1`：顺序播放，播完调 `anim_next`（`0x080272A4`），按文件顺序轮播（原厂开机默认）。
+
+没有"跳到下一个 GIF"的键。补丁新增：
+
+| 键码 | Vial 名称 | 作用 |
+| --- | --- | --- |
+| `0x7E0A` | SCR_NXT / GIF Next | 下一个 GIF（到最后一个后回到第一个） |
+| `0x7E0B` | SCR_PRV / GIF Prev | 上一个 GIF（到第一个后回到最后一个） |
+
+实现：关掉正在播放的文件（`anim_close_file`，`0x08026F04`），改 `anim->index`（`anim_t + 0x1448`，
+文件总数在 `+0x1446`），再用 `anim_open_index`（`0x08026F18`）打开；打不开的文件会自动跳过；
+最后把帧延时清零，让新 GIF 立刻显示。
+
+同时把 `.data` 里播放模式的初始值（`0x0803D380`）从 1 改成 0，**开机默认单个循环**；
+想恢复原厂的顺序播放默认值，生成时加 `--sequence`。`SCR_MOD` 仍然可以在两种模式间切换。
+当前是第几个 GIF 不会保存，重新插拔后回到第一个。

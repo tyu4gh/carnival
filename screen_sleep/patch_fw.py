@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Add a screen on/off key (SCR_TOG) and optional auto-sleep to the Carnival TKL
-AMK firmware (UF2 -> UF2).
+"""Add screen keys and optional auto-sleep to the Carnival TKL AMK firmware
+(UF2 -> UF2).
 
-usage: patch_fw.py Carnival_TKL_v5.uf2 [-o out.uf2] [-t SECONDS]
+usage: patch_fw.py Carnival_TKL_v5.uf2 [-o out.uf2] [-t SECONDS] [--sequence]
 
-SCR_TOG (0x7E09) is also added to the Vial definition inside the firmware, so it
-shows up in Vial's "User" key tab.
+New keys, also added to the Vial definition inside the firmware so they show up
+in Vial's "User" key tab:
+  SCR_TOG (0x7E09)  screen on/off
+  SCR_NXT (0x7E0A)  next GIF
+  SCR_PRV (0x7E0B)  previous GIF
+By default the screen now starts in "loop current GIF" mode (SCR_MOD still
+switches to "play all in order"); --sequence keeps the original default.
 
 Needs arm-none-eabi-as / arm-none-eabi-ld / arm-none-eabi-objcopy.
 Only the exact v5 image is supported; every patched location is verified first.
@@ -37,8 +42,15 @@ VIAL_SIZE_LO  = 0x0802CD42       # movs r3, #0x84   (size & 0xff)
 VIAL_SIZE_HI  = 0x0802CD46       # movs r3, #0x07   (size >> 8)
 VIAL_MOVW_M1  = 0x0802CD56       # movw r1, #1923   (size - 1)
 VIAL_MOVW     = 0x0802CD68       # movw r2, #1924   (size)
-SCR_TOG_KEY   = {"name": "SCR_TOG", "title": "Toggle screen on/off/开关屏幕",
-                 "shortName": "Screen\nOn/Off"}
+NEW_KEYS      = [                # appended as customKeycodes[9..] -> 0x7E09..
+    {"name": "SCR_TOG", "title": "Toggle screen on/off/开关屏幕", "shortName": "Screen\nOn/Off"},
+    {"name": "SCR_NXT", "title": "Next GIF/下一个动画", "shortName": "GIF\nNext"},
+    {"name": "SCR_PRV", "title": "Previous GIF/上一个动画", "shortName": "GIF\nPrev"},
+]
+
+# .data initial value of the screen play mode (0 = loop current GIF, 1 = all in order)
+DATA_LMA      = 0x0803D158       # load address of .data (RAM 0x20000000)
+MODE_INIT     = DATA_LMA + 0x228 # anim screen struct 0x20000210 + 0x18
 
 def uf2_read(path):
     data = open(path, "rb").read()
@@ -97,7 +109,7 @@ def patch_vial(img, base):
     js = json.loads(lzma.decompress(bytes(at(VIAL_DEF, VIAL_DEF_LEN))))
     if len(js["customKeycodes"]) != 9:
         sys.exit("unexpected Vial customKeycodes")
-    js["customKeycodes"].append(SCR_TOG_KEY)          # index 9 -> 0x7E09
+    js["customKeycodes"].extend(NEW_KEYS)
     blob = lzma.compress(json.dumps(js, ensure_ascii=False, separators=(",", ":")).encode())
     if VIAL_BASE + len(blob) > PATCH_MAX or len(blob) > 0xFFFF:
         sys.exit("Vial definition too large")
@@ -130,6 +142,8 @@ def main():
     ap.add_argument("-o", "--out", default="Carnival_TKL_v5_screen.uf2")
     ap.add_argument("-t", "--timeout", type=int, default=0,
                     help="idle seconds before the screen sleeps (default 0 = never)")
+    ap.add_argument("--sequence", action="store_true",
+                    help="keep the original default of playing all GIFs in order")
     args = ap.parse_args()
 
     base, img = uf2_read(args.uf2)
@@ -158,6 +172,12 @@ def main():
         img[o:o + 4] = thumb_branch(addr, syms[sym], link)
 
     vial_len = patch_vial(img, base)
+
+    o = MODE_INIT - base
+    if img[o:o + 4] != struct.pack("<I", 1):
+        sys.exit("unexpected screen mode initial value")
+    if not args.sequence:
+        img[o:o + 4] = struct.pack("<I", 0)
 
     uf2_write(args.out, base, img)
     print("wrote %s (timeout %d s, code %d bytes @ 0x%08x, vial def %d bytes @ 0x%08x)"

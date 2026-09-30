@@ -8,6 +8,7 @@ import os; sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))); import
 B,img=p.uf2_read(sys.argv[1])
 SCREEN_ON=0x20000240; MANUAL=0x20000241; LAST=0x2000058c; USB=0x2000cb60; SUSP=0x2000cb54
 STUBS={0x8027e7e:'timer_read32',0x8027e90:'timer_elapsed32',0x80227f4:'set_power',
+       0x8026f04:'anim_close',0x8026f18:'anim_open',
        0x8022700:'orig_init',0x802279c:'orig_task',0x8022334:'orig_kb',0x802232e:'orig_wakeup',0x802ab5e:'orig_record'}
 RET=0x08000100
 st={'now':0,'calls':[]}
@@ -28,6 +29,11 @@ def hook(uc,addr,size,_):
             if cur!=r0: uc.mem_write(SCREEN_ON,bytes([r0])); st['calls'].append(('power',r0))
         elif n=='orig_wakeup':
             st['calls'].append(('wakeup',)); uc.mem_write(SCREEN_ON,b'\x01')
+        elif n=='anim_close': st['calls'].append(('close',hex(r0)))
+        elif n=='anim_open':
+            idx=struct.unpack('<H',uc.mem_read(r0+0x1448,2))[0]
+            ok=idx not in st.get('bad',())
+            st['calls'].append(('open',idx,ok)); uc.reg_write(UC_ARM_REG_R0,int(ok))
         elif n=='orig_kb': st['calls'].append(('kb',hex(r0))); uc.reg_write(UC_ARM_REG_R0,1)
         else: st['calls'].append((n,))
         uc.reg_write(UC_ARM_REG_PC,uc.reg_read(UC_ARM_REG_LR))
@@ -74,3 +80,25 @@ st['now']=700100; step('task',call(S['task_hook']))
 st['now']=800000; step('host resume (manual on)',call(S['resume_hook']))
 st['now']=0xfffffff0; step('SCR_MOD 0x7e07 passes through',key(0x7e07,1))
 st['now']=0x00000100; step('task after 32-bit timer wrap',call(S['task_hook']))
+
+# ---- GIF next / previous ----
+ANIM_S=0x20000210; ANIM=0x20012000
+print('boot play mode (0=loop current, 1=all in order):', struct.unpack('<I',mu.mem_read(ANIM_S+0x18,4))[0])
+def anim_state(): return struct.unpack('<HH',mu.mem_read(ANIM+0x1446,4)), struct.unpack('<I',mu.mem_read(ANIM_S+0x14,4))[0]
+mu.mem_write(ANIM_S+0x1c,struct.pack('<I',ANIM))
+mu.mem_write(ANIM+0x1446,struct.pack('<HH',4,0))   # 4 files, index 0
+mu.mem_write(ANIM_S+0x14,struct.pack('<I',500))
+def step2(msg,r): print(f"{msg:45s} -> ret={r[0]} calls={r[1]} (count,index),delay={anim_state()}")
+step2('SCR_NXT press',key(0x7e0a,1))
+step2('SCR_NXT release (ignored)',key(0x7e0a,0))
+step2('SCR_NXT x2',key(0x7e0a,1)); step2('',key(0x7e0a,1))
+step2('SCR_NXT wraps 3 -> 0',key(0x7e0a,1))
+step2('SCR_PRV wraps 0 -> 3',key(0x7e0b,1))
+st['bad']={2,1}
+step2('SCR_PRV skips broken files 2,1 -> 0',key(0x7e0b,1))
+st['bad']={0,1,2,3}
+step2('SCR_NXT all broken: gives up',key(0x7e0a,1))
+st['bad']=set()
+mu.mem_write(ANIM_S+0x1c,b'\0\0\0\0')
+step2('SCR_NXT with no anim (MSC mode)',key(0x7e0a,1))
+step2('key 0x7e0c passes through',key(0x7e0c,1))
