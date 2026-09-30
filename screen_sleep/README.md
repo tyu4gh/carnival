@@ -194,8 +194,16 @@ python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 -o Carnival_TKL_v5_screen.uf2   #
 
 如果 Vial 里没看到新键，也可以在 "Any" 键里直接填 `0x7E09`。
 
-刷机：和平时一样进入 UF2 bootloader，把新的 `.uf2` 拖进 U 盘。bootloader 在 `0x08000000`，
-不会被覆盖，出问题随时刷回原版 `Carnival_TKL_v5.uf2`。
+刷机步骤（vial.rocks 只能改键，不能刷固件）：
+
+1. 拔掉键盘，**按住 Esc**（矩阵 0,0）再插线，键盘会重启进入 UF2 bootloader，电脑上出现一个 U 盘；
+   或者在 Vial 里把某个键设成 `QK_BOOT`（0x7C00），按下同样进入。
+2. 把 `.uf2` 文件拖进这个 U 盘，写完后键盘自动重启。
+3. 打开 vial.rocks（或 Vial 客户端），在 User 页把 **Screen On/Off** 放到某个键上。
+
+按住 Esc 的检测（bootmagic，`0x0802890E`）在 `keyboard_init` 里执行，比补丁的任何代码都早
+（补丁最早在 `amk_init` 末尾的 `0x08027D66` 才第一次被调用），所以即使补丁代码出错，
+按住 Esc 插线仍然能进 bootloader 刷回原版。bootloader 本身在 `0x08000000`，刷固件不会覆盖它。
 
 > ⚠️ 这个补丁在反汇编层面逐条核对过（跳转编码、调用约定、栈对齐、补丁区为空），
 > 但我手上没有实物键盘，没有上机测试。
