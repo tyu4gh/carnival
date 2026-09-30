@@ -1,4 +1,4 @@
-# Carnival TKL 固件反编译分析 & GIF 屏幕开关键 / 切换键 / 自动休眠补丁
+# Carnival TKL 固件反编译分析 & GIF 屏幕开关键 / 切换键 / 屏幕+灯光自动休眠补丁
 
 对象：`Carnival_TKL_v5.uf2`（Matrix Lab Carnival TKL，v5 固件）
 
@@ -176,7 +176,8 @@ Carnival TKL 的源码没有公开，所以我把上面的逻辑写成 232 字�
 ```bash
 sudo apt install binutils-arm-none-eabi      # 需要 arm-none-eabi-as/ld/objcopy/nm
 python3 patch_fw.py Carnival_TKL_v5.uf2 -o Carnival_TKL_v5_screen.uf2          # 只加开关键
-python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 -o Carnival_TKL_v5_screen.uf2   # 开关键 + 空闲 300 秒自动休眠
+python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 -o Carnival_TKL_v5_screen.uf2   # 开关键 + 空闲 300 秒屏幕和灯光一起休眠
+python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 --no-rgb-sleep -o ...           # 只休眠屏幕，灯光常亮
 ```
 
 脚本会先校验原固件的 SHA-256 和 4 个补丁点的原始字节，不是同一个 v5 固件就直接拒绝，
@@ -206,7 +207,20 @@ python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 -o Carnival_TKL_v5_screen.uf2   #
 按住 Esc 插线仍然能进 bootloader 刷回原版。bootloader 本身在 `0x08000000`，刷固件不会覆盖它。
 
 > ✅ 实机验证：只带开关键的版本（不加 `-t`）已在 Carnival TKL 上刷入，按 Screen On/Off 可以正常开关屏幕。
-> 自动休眠（`-t N`）目前只做过反汇编核对和 `emu_test.py` 模拟测试，还没有实机验证。
+> 自动休眠（`-t N`，含灯光休眠）目前只做过反汇编核对和 `emu_test.py` 模拟测试，还没有实机验证。
+
+## 5. 灯光休眠
+
+原厂的 USB 挂起逻辑里，关灯/开灯只是写一个运行时标志字节 `0x200090B8`（`0x0802674C` 置 1，`0x08026758` 清 0）。
+RGB 任务（`0x08026554`）每帧检查它：为 1 时跳过灯效计算，把 5 个灯驱动全部设成黑色并刷新；为 0 时灯效照常。
+这个标志不写 EEPROM，只在运行时生效。
+
+补丁在 `task_hook` 里让这个标志跟随空闲计时（和屏幕同一个 `-t` 时间）：
+
+* 空闲超过 N 秒 → 标志置 1，62 颗灯全部熄灭；按任意键 → 清 0，灯效从当前设置继续；
+* 灯光只看空闲计时，**和开关键无关**：手动关了屏幕，灯光照常亮；空闲后照样熄灭，按键又亮；
+* 电脑休眠（USB 挂起）和 U 盘模式期间补丁不碰这个标志，交给原厂逻辑；
+* 生成时加 `--no-rgb-sleep` 可以关掉灯光休眠（补丁头 `flags` 字的 bit0）；不加 `-t` 时两者都不休眠。
 
 ## 4. GIF 切换键（SCR_NXT / SCR_PRV）
 

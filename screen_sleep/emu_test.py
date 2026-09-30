@@ -6,7 +6,7 @@ from unicorn import *
 from unicorn.arm_const import *
 import os; sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))); import patch_fw as p
 B,img=p.uf2_read(sys.argv[1])
-SCREEN_ON=0x20000240; MANUAL=0x20000241; LAST=0x2000058c; USB=0x2000cb60; SUSP=0x2000cb54
+SCREEN_ON=0x20000240; MANUAL=0x20000241; LAST=0x2000058c; USB=0x2000cb60; SUSP=0x2000cb54; RGB=0x200090b8
 STUBS={0x8027e7e:'timer_read32',0x8027e90:'timer_elapsed32',0x80227f4:'set_power',
        0x8026f04:'anim_close',0x8026f18:'anim_open',
        0x8022700:'orig_init',0x802279c:'orig_task',0x8022334:'orig_kb',0x802232e:'orig_wakeup',0x802ab5e:'orig_record'}
@@ -61,8 +61,8 @@ def dest(site):
     return site+4+off
 S={'init_hook':dest(0x80222f2),'task_hook':dest(0x80222f6),'record_hook':dest(0x802a670),'resume_hook':dest(0x8027e14),'kb_hook':dest(0x802aa98)}
 p_sym=lambda n:S[n]
-def screen(): return mu.mem_read(SCREEN_ON,2)[0], mu.mem_read(MANUAL,1)[0]
-def step(msg,r): print(f"{msg:45s} -> ret={r[0]} calls={r[1]} screen_on,manual_off={screen()}")
+def screen(): return mu.mem_read(SCREEN_ON,2)[0], mu.mem_read(MANUAL,1)[0], mu.mem_read(RGB,1)[0]
+def step(msg,r): print(f"{msg:45s} -> ret={r[0]} calls={r[1]} screen_on,manual_off,rgb_sleep={screen()}")
 st['now']=1000; step('boot init_hook',call(S['init_hook']))
 st['now']=2000; step('task (active)',call(S['task_hook']))
 st['now']=5000; step('normal key A press',key(0x04,1))
@@ -80,6 +80,22 @@ st['now']=700100; step('task',call(S['task_hook']))
 st['now']=800000; step('host resume (manual on)',call(S['resume_hook']))
 st['now']=0xfffffff0; step('SCR_MOD 0x7e07 passes through',key(0x7e07,1))
 st['now']=0x00000100; step('task after 32-bit timer wrap',call(S['task_hook']))
+
+# ---- RGB sleep follows the idle timer, independent of SCR_TOG ----
+st['now']=0x1000; key(0x04,1); call(S['task_hook'])
+st['now']=0x1000+10000; step('SCR_TOG off while active',key(0x7e09,1))
+st['now']=0x1000+400000; step('idle > timeout, screen manually off',call(S['task_hook']))
+st['now']=0x1000+400100; step('key press',key(0x04,1))
+st['now']=0x1000+400200; step('task: LEDs back, screen stays off',call(S['task_hook']))
+st['now']=0x1000+400300; key(0x7e09,1)
+st['now']=0x1000+900000; step('idle again',call(S['task_hook']))
+mu.mem_write(SUSP,b'\x01'); mu.mem_write(RGB,b'\x01')
+st['now']=0x1000+900100; step('USB suspended: hook leaves LED flag alone',key(0x04,1)); call(S['task_hook'])
+mu.mem_write(SUSP,b'\x00'); mu.mem_write(RGB,b'\x00'); step('host resume (firmware clears flag)',call(S['resume_hook']))
+st['now']=0x1000+900200; step('task after resume',call(S['task_hook']))
+mu.mem_write(USB,struct.pack('<I',2)); mu.mem_write(RGB,b'\x00')
+st['now']=0x1000+2000000; step('MSC mode + idle: untouched',call(S['task_hook']))
+mu.mem_write(USB,b'\0\0\0\0')
 
 # ---- GIF next / previous ----
 ANIM_S=0x20000210; ANIM=0x20012000

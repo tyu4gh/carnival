@@ -2,13 +2,15 @@
 """Add screen keys and optional auto-sleep to the Carnival TKL AMK firmware
 (UF2 -> UF2).
 
-usage: patch_fw.py Carnival_TKL_v5.uf2 [-o out.uf2] [-t SECONDS] [--sequence]
+usage: patch_fw.py Carnival_TKL_v5.uf2 [-o out.uf2] [-t SECONDS] [--no-rgb-sleep] [--sequence]
 
 New keys, also added to the Vial definition inside the firmware so they show up
 in Vial's "User" key tab:
   SCR_TOG (0x7E09)  screen on/off
   SCR_NXT (0x7E0A)  next GIF
   SCR_PRV (0x7E0B)  previous GIF
+With -t N the screen powers off and all RGB LEDs go dark after N idle seconds
+(--no-rgb-sleep keeps the LEDs on); the next key press wakes both.
 By default the screen now starts in "loop current GIF" mode (SCR_MOD still
 switches to "play all in order"); --sequence keeps the original default.
 
@@ -142,6 +144,8 @@ def main():
     ap.add_argument("-o", "--out", default="Carnival_TKL_v5_screen.uf2")
     ap.add_argument("-t", "--timeout", type=int, default=0,
                     help="idle seconds before the screen sleeps (default 0 = never)")
+    ap.add_argument("--no-rgb-sleep", action="store_true",
+                    help="keep the RGB LEDs on when the screen auto-sleeps")
     ap.add_argument("--sequence", action="store_true",
                     help="keep the original default of playing all GIFs in order")
     args = ap.parse_args()
@@ -163,6 +167,7 @@ def main():
     code = bytearray(code)
     struct.pack_into("<I", code, 0, args.timeout * 1000)
     assert code[4:8] == b"SSLP"
+    struct.pack_into("<I", code, 8, 0 if args.no_rgb_sleep else 1)
     img[p:p + len(code)] = code
 
     for addr, orig, sym, link in SITES:
@@ -180,8 +185,8 @@ def main():
         img[o:o + 4] = struct.pack("<I", 0)
 
     uf2_write(args.out, base, img)
-    print("wrote %s (timeout %d s, code %d bytes @ 0x%08x, vial def %d bytes @ 0x%08x)"
-          % (args.out, args.timeout, len(code), PATCH_BASE, vial_len, VIAL_BASE))
+    print("wrote %s (timeout %d s, rgb sleep %s, code %d bytes @ 0x%08x, vial def %d bytes @ 0x%08x)"
+          % (args.out, args.timeout, "off" if args.no_rgb_sleep else "on", len(code), PATCH_BASE, vial_len, VIAL_BASE))
 
 if __name__ == "__main__":
     main()

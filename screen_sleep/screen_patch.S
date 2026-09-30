@@ -4,13 +4,14 @@
  * Adds:
  *   - SCR_TOG custom keycode (0x7E09): press to switch the screen off/on
  *   - SCR_NXT / SCR_PRV (0x7E0A / 0x7E0B): jump to the next / previous GIF
- *   - optional auto-sleep after timeout_ms without key events (0 = disabled)
+ *   - optional auto-sleep after timeout_ms without key events (0 = disabled):
+ *     screen powers off and all RGB LEDs go dark, both wake on the next key
  *
  * Placed in the unused zero-padding of the app image at PATCH_BASE and reached
  * through five redirected branches (see patch_fw.py):
  *
  *   0x080222f2  b.w  screen_init       -> init_hook    (seed idle timer)
- *   0x080222f6  b.w  screen_task       -> task_hook    (sleep / wake screen)
+ *   0x080222f6  b.w  screen_task       -> task_hook    (sleep / wake screen + RGB)
  *   0x0802a670  bl   process_record    -> record_hook  (every key event = activity)
  *   0x0802aa98  bl   process_record_kb -> kb_hook      (SCR_TOG/NXT/PRV keys)
  *   0x08027e14  bl   suspend_wakeup_kb -> resume_hook  (host resume = activity)
@@ -26,6 +27,9 @@
     .equ SUSPENDED,         0x2000cb54  /* uint8: USB suspended */
     .equ MANUAL_OFF,        0x20000241  /* uint8: switched off by SCR_TOG; padding
                                            after SCREEN_ON, zeroed by .data init */
+    .equ RGB_SLEEP,         0x200090b8  /* uint8: rgb task blanks all LEDs when set;
+                                           written only by rgb init and suspend */
+    .equ FLAG_RGB_SLEEP,    1
     .equ SCR_TOG,           0x7e09      /* QK_KB_9, customKeycodes[9] in Vial */
     .equ SCR_NXT,           0x7e0a      /* QK_KB_10 */
     .equ SCR_PRV,           0x7e0b      /* QK_KB_11 */
@@ -52,6 +56,8 @@
 timeout_ms:
     .word 0                     /* idle time before sleep, ms; 0 = never */
     .ascii "SSLP"               /* marker so the patcher can find/verify it */
+flags:
+    .word FLAG_RGB_SLEEP        /* bit0: RGB LEDs sleep with the screen */
 
     .thumb_func
     .global init_hook
@@ -172,14 +178,11 @@ toggle:
     .global task_hook
 task_hook:
     push    {r4, lr}
-    ldr     r3, =USB_SETTING    /* leave the screen alone in MSC mode */
+    ldr     r3, =USB_SETTING    /* leave everything alone in MSC mode */
     ldr     r3, [r3]
     tst     r3, #2
     bne     done
-    ldr     r3, =MANUAL_OFF     /* SCR_TOG owns the screen while off */
-    ldrb    r3, [r3]
-    cbnz    r3, done
-    ldr     r3, =SUSPENDED      /* suspend/resume hooks own the screen then */
+    ldr     r3, =SUSPENDED      /* suspend/resume hooks own screen + RGB then */
     ldrb    r3, [r3]
     cbnz    r3, done
     ldr     r3, timeout_ms
@@ -188,17 +191,23 @@ task_hook:
     ldr     r0, [r0]
     bl      timer_elapsed32     /* r0 = now - last */
     ldr     r1, timeout_ms
-    ldr     r3, =SCREEN_ON
-    ldrb    r4, [r3]
     cmp     r0, r1
-    bhi     idle
-    cbnz    r4, done            /* active and already on */
-    movs    r0, #1
-    bl      screen_set_power
-    b       done
-idle:
-    cbz     r4, done            /* idle and already off */
-    movs    r0, #0
+    ite     hi
+    movhi   r4, #1              /* r4 = idle */
+    movls   r4, #0
+    ldr     r3, flags           /* RGB follows idle state */
+    tst     r3, #FLAG_RGB_SLEEP
+    beq     1f
+    ldr     r3, =RGB_SLEEP
+    strb    r4, [r3]
+1:  ldr     r3, =MANUAL_OFF     /* SCR_TOG owns the screen while off */
+    ldrb    r3, [r3]
+    cbnz    r3, done
+    ldr     r3, =SCREEN_ON
+    ldrb    r3, [r3]
+    cmp     r3, r4              /* screen_on == idle -> state must flip */
+    bne     done
+    eor     r0, r4, #1
     bl      screen_set_power
 done:
     pop     {r4, lr}
