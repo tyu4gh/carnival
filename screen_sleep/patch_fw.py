@@ -20,7 +20,7 @@ UF2_FAMILY = 0x57755A57          # STM32F4
 SRC        = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screen_patch.S")
 V5_SHA256  = "a995710d891b2805f56dc34d6113d676e1a3ea7b639731d4485254c5f596702d"
 
-# (address, original instruction bytes, symbol in screen_sleep.S, is_bl)
+# (address, original instruction bytes, symbol in screen_patch.S, is_bl)
 SITES = [
     (0x080222F2, "00f005ba", "init_hook",   False),  # b.w 0x08022700 (screen init)
     (0x080222F6, "00f051ba", "task_hook",   False),  # b.w 0x0802279c (screen task)
