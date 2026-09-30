@@ -205,5 +205,5 @@ python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 -o Carnival_TKL_v5_screen.uf2   #
 （补丁最早在 `amk_init` 末尾的 `0x08027D66` 才第一次被调用），所以即使补丁代码出错，
 按住 Esc 插线仍然能进 bootloader 刷回原版。bootloader 本身在 `0x08000000`，刷固件不会覆盖它。
 
-> ⚠️ 这个补丁在反汇编层面逐条核对过（跳转编码、调用约定、栈对齐、补丁区为空），
-> 但我手上没有实物键盘，没有上机测试。
+> ✅ 实机验证：只带开关键的版本（不加 `-t`）已在 Carnival TKL 上刷入，按 Screen On/Off 可以正常开关屏幕。
+> 自动休眠（`-t N`）目前只做过反汇编核对和 `emu_test.py` 模拟测试，还没有实机验证。
