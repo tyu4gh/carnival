@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify firmware checksum
+        run: grep -q "$(sha256sum release/*.uf2 | cut -d' ' -f1)" release/RELEASE_NOTES.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: "Carnival TKL v5 · 屏幕开关 + 屏幕/灯光自动休眠"
+          body_path: release/RELEASE_NOTES.md
+          files: release/*.uf2
