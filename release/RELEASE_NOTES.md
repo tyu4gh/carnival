@@ -42,7 +42,7 @@
   python3 screen_sleep/patch_fw.py Carnival_TKL_v5.uf2 -t 600 --sequence -o out.uf2              # 10 分钟
   python3 screen_sleep/patch_fw.py Carnival_TKL_v5.uf2 -t 300 --sequence --no-rgb-sleep -o out.uf2  # 灯光不休眠
   ```
-- 反编译分析和实现细节见 [`screen_sleep/README.md`](../screen_sleep/README.md)。
+- 反编译分析和实现细节见 [`screen_sleep/README.md`](https://github.com/tyu4gh/carnival/blob/claude/keyboard-firmware-screen-sleep-5rld7z/screen_sleep/README.md)。
 - 这是非官方修改版，与 Matrix Lab 无关，刷机风险自负。
 
 ## 校验
