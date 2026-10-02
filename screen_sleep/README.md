@@ -96,8 +96,18 @@ void suspend_wakeup_init(void){ if (suspended)  { rgb_on();   screen_set_power(1
 自动休眠的思路：
 
 1. 每次有按键事件就记下当前时间 `last_activity = timer_read32()`；
-2. 主循环里检查 `timer_elapsed32(last_activity) > TIMEOUT`，超时就 `screen_set_power(0)`；
-3. 有新按键、屏幕又是关着的，就 `screen_set_power(1)`。
+2. 主循环里检查 `timer_elapsed32(last_activity) > TIMEOUT`，超时就进入休眠；
+3. 有新按键、屏幕又是休眠的，就唤醒。
+
+> ⚠️ 休眠时**不要**用 `screen_set_power(0/1)`。`screen_set_power(1)` 会重新初始化屏幕，
+> 它的初始化序列里有约 **650ms 的阻塞延时**（`lcd_init`，`0x08022A5C`）。这段代码跑在键盘主循环里，
+> 期间矩阵扫描和 USB 都停住：按键唤醒时，按下事件先发出去，接着主循环卡 0.7 秒，
+> 这期间你松开按键也发不出松键事件，系统便把这个键当成长按、触发连续重复——
+> 表现就是"打字卡顿 + 一直输出唤醒时那个字符"。
+>
+> 正确做法：休眠时**只刷黑屏幕 + 暂停 GIF，不切断屏幕供电（PB9 保持）**；唤醒时直接继续刷新。
+> 因为屏幕一直通电、没掉电，唤醒不需要重新初始化，主循环不阻塞，打字完全不受影响。
+> 灯光休眠本来就只是写一个标志位（见下），从来不阻塞。
 
 ### 方案 A：有源码（自己用 AMK 编译）
 
@@ -207,8 +217,12 @@ python3 patch_fw.py Carnival_TKL_v5.uf2 -t 300 --no-rgb-sleep -o ...           #
 按住 Esc 插线仍然能进 bootloader 刷回原版。bootloader 本身在 `0x08000000`，刷固件不会覆盖它。
 
 > ✅ 实机验证：只带开关键的版本（不加 `-t`）已在 Carnival TKL 上刷入，按 Screen On/Off 可以正常开关屏幕。
-> `-t 300 --sequence`（开关键 + GIF 切换键 + 屏幕/灯光 5 分钟自动休眠）也已实机刷入，
-> 即 Release 里的 `Carnival_TKL_v5_screen_toggle_sleep300s_rgb.uf2`。
+> `-t 300 --sequence`（开关键 + GIF 切换键 + 屏幕/灯光 5 分钟自动休眠）也已实机刷入。
+>
+> **v1.1 修复**：v1.0 的自动休眠用 `screen_set_power` 做屏幕开关，唤醒时会重新初始化屏幕
+> 阻塞主循环约 0.7 秒，导致按键唤醒后打字卡顿、并连续输出唤醒时那个字符。v1.1 改成
+> "刷黑 + 暂停 GIF（`blank_screen`，不切 PB9）/ 唤醒直接继续刷新"，彻底消除这个阻塞。
+> 逻辑经 `emu_test.py` 模拟验证（唤醒路径不再调用屏幕上电函数），实机效果请刷入 v1.1 后复测。
 
 ## 5. 灯光休眠
 
@@ -222,6 +236,12 @@ RGB 任务（`0x08026554`）每帧检查它：为 1 时跳过灯效计算，把 
 * 灯光只看空闲计时，**和开关键无关**：手动关了屏幕，灯光照常亮；空闲后照样熄灭，按键又亮；
 * 电脑休眠（USB 挂起）和 U 盘模式期间补丁不碰这个标志，交给原厂逻辑；
 * 生成时加 `--no-rgb-sleep` 可以关掉灯光休眠（补丁头 `flags` 字的 bit0）；不加 `-t` 时两者都不休眠。
+
+屏幕休眠（v1.1）用的是另一套机制：`task_hook` 空闲时把屏幕刷黑（`blank_screen`，复用原厂
+`screen_power(0)` 的刷黑部分，但不切 PB9）并用一个标志 `0x20000242` 记下"已休眠"，然后
+**跳过 `screen_task`** 让 GIF 停播；有按键后清掉标志、恢复调用 `screen_task`，GIF 立刻继续。
+全程不调用 `screen_set_power`，没有屏幕重新初始化，主循环不阻塞。`SCR_TOG` 手动开关仍用原来的
+`screen_set_power`（切 PB9），因为那是单次主动操作、不在连续打字过程中。
 
 ## 4. GIF 切换键（SCR_NXT / SCR_PRV）
 

@@ -6,9 +6,9 @@ from unicorn import *
 from unicorn.arm_const import *
 import os; sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))); import patch_fw as p
 B,img=p.uf2_read(sys.argv[1])
-SCREEN_ON=0x20000240; MANUAL=0x20000241; LAST=0x2000058c; USB=0x2000cb60; SUSP=0x2000cb54; RGB=0x200090b8
+SCREEN_ON=0x20000240; MANUAL=0x20000241; AUTO=0x20000242; LAST=0x2000058c; USB=0x2000cb60; SUSP=0x2000cb54; RGB=0x200090b8
 STUBS={0x8027e7e:'timer_read32',0x8027e90:'timer_elapsed32',0x80227f4:'set_power',
-       0x8026f04:'anim_close',0x8026f18:'anim_open',
+       0x8026f04:'anim_close',0x8026f18:'anim_open',0x8020944:'memset',0x8022968:'lcd_fill',
        0x8022700:'orig_init',0x802279c:'orig_task',0x8022334:'orig_kb',0x802232e:'orig_wakeup',0x802ab5e:'orig_record'}
 RET=0x08000100
 st={'now':0,'calls':[]}
@@ -19,6 +19,7 @@ mu.mem_map(0x20000000,0x20000)
 # .data init like startup code
 mu.mem_write(0x20000000,bytes(img[0x803d158-B:0x803d158-B+0x58c]))
 mu.mem_write(LAST,b'\xa5\xa5\xa5\xa5')  # garbage padding at power-on
+mu.mem_write(0x20000230,struct.pack('<II',0x20013000,0x8000))  # screen obj buf,size
 def hook(uc,addr,size,_):
     if addr in STUBS:
         n=STUBS[addr]; r0=uc.reg_read(UC_ARM_REG_R0)
@@ -29,6 +30,10 @@ def hook(uc,addr,size,_):
             if cur!=r0: uc.mem_write(SCREEN_ON,bytes([r0])); st['calls'].append(('power',r0))
         elif n=='orig_wakeup':
             st['calls'].append(('wakeup',)); uc.mem_write(SCREEN_ON,b'\x01')
+        elif n=='memset':
+            # record black-fill of the screen buffer; leave r0 (dst) as return
+            st['calls'].append(('memset',hex(r0)))
+        elif n=='lcd_fill': st['calls'].append(('blank',))
         elif n=='anim_close': st['calls'].append(('close',hex(r0)))
         elif n=='anim_open':
             idx=struct.unpack('<H',uc.mem_read(r0+0x1448,2))[0]
@@ -61,8 +66,8 @@ def dest(site):
     return site+4+off
 S={'init_hook':dest(0x80222f2),'task_hook':dest(0x80222f6),'record_hook':dest(0x802a670),'resume_hook':dest(0x8027e14),'kb_hook':dest(0x802aa98)}
 p_sym=lambda n:S[n]
-def screen(): return mu.mem_read(SCREEN_ON,2)[0], mu.mem_read(MANUAL,1)[0], mu.mem_read(RGB,1)[0]
-def step(msg,r): print(f"{msg:45s} -> ret={r[0]} calls={r[1]} screen_on,manual_off,rgb_sleep={screen()}")
+def screen(): return mu.mem_read(SCREEN_ON,1)[0], mu.mem_read(MANUAL,1)[0], mu.mem_read(AUTO,1)[0], mu.mem_read(RGB,1)[0]
+def step(msg,r): print(f"{msg:46s} -> calls={str(r[1]):42s} on,man,auto,rgb={screen()}")
 st['now']=1000; step('boot init_hook',call(S['init_hook']))
 st['now']=2000; step('task (active)',call(S['task_hook']))
 st['now']=5000; step('normal key A press',key(0x04,1))
@@ -118,3 +123,37 @@ st['bad']=set()
 mu.mem_write(ANIM_S+0x1c,b'\0\0\0\0')
 step2('SCR_NXT with no anim (MSC mode)',key(0x7e0a,1))
 step2('key 0x7e0c passes through',key(0x7e0c,1))
+
+
+# ================= auto-sleep must NOT power-cycle the panel =================
+def only(calls,*names):
+    got=[c[0] for c in calls]; return got==list(names)
+def has(calls,name): return any(c[0]==name for c in calls)
+
+import sys
+fail=[]
+# fresh state
+for a in (SCREEN_ON,): mu.mem_write(a,b'\x01')
+mu.mem_write(MANUAL,b'\x00'); mu.mem_write(AUTO,b'\x00'); mu.mem_write(SUSP,b'\x00'); mu.mem_write(USB,b'\x00\x00\x00\x00'); mu.mem_write(RGB,b'\x00')
+st['now']=0x5000; key(0x04,1)                       # activity
+st['now']=0x5000+100; _,c=call(S['task_hook'])      # active
+if has(c,'power') or has(c,'blank'): fail.append('active frame touched panel')
+st['now']=0x5000+400000; _,c=call(S['task_hook'])   # idle -> sleep
+if not has(c,'blank'): fail.append('sleep did not blank')
+if has(c,'power'): fail.append('sleep power-cycled panel')
+if has(c,'orig_task'): fail.append('sleep still ran screen_task')
+if mu.mem_read(AUTO,1)[0]!=1: fail.append('AUTO not set')
+if mu.mem_read(RGB,1)[0]!=1: fail.append('RGB not slept')
+st['now']=0x5000+400100; _,c=call(S['task_hook'])   # still idle -> stay asleep, no re-blank
+if has(c,'blank') or has(c,'power'): fail.append('re-blanked while asleep')
+# THE FIX: typing wakes without any panel power/init, and resumes refresh
+st['now']=0x5000+500000; key(0x04,1)                # type -> activity
+_,c=call(S['task_hook'])
+if has(c,'power'): fail.append('WAKE power-cycled panel (the bug)')
+if not has(c,'orig_task'): fail.append('wake did not resume screen_task')
+if mu.mem_read(AUTO,1)[0]!=0: fail.append('AUTO not cleared on wake')
+if mu.mem_read(RGB,1)[0]!=0: fail.append('RGB not woken')
+
+print('\n==== fix assertions ====')
+print('PASS: waking by typing never calls the slow screen power-on' if not fail else 'FAIL: '+'; '.join(fail))
+sys.exit(1 if fail else 0)
