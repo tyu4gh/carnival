@@ -18,7 +18,7 @@ os.makedirs(OUT, exist_ok=True)
 # ---------------------------------------------------------------- parameters
 BODY_W, BODY_Y0, BODY_Y1, BODY_H = 8.0, -13.0, 14.0, 5.0
 LAP_Z = 2.2                 # split height of the lap joint
-PLATE_Z0, PLATE_T = 2.2, 1.8  # wing plate z 2.2 .. 4.0
+PLATE_Z0, PLATE_T = 2.3, 1.8  # wing plate z 2.3 .. 4.1 (0.1 above lap plane: no coplanar faces)
 JOIN_PIN_D, JOIN_HOLE_D, JOIN_PIN_H, JOIN_HOLE_DEPTH = 2.05, 2.00, 1.8, 2.0
 JOIN_PIN_POS = [(-2.0, -6.0), (-2.0, 6.0)]
 
@@ -77,8 +77,10 @@ def wing_half(side):
     plate = plate.union(ant)
     # clip bosses with pin holes
     for (x, y) in BOSS_POS:
-        boss = (cq.Workplane("XY").workplane(offset=BOSS_Z0).center(x, y)
-                .circle(BOSS_D / 2).extrude(PLATE_Z0 - BOSS_Z0 + 0.2, taper=1))
+        bh = PLATE_Z0 - BOSS_Z0 + 0.2   # 1 deg draft: narrow at the free (bottom) end
+        boss = cq.Workplane("XY").add(cq.Solid.makeCone(
+            BOSS_D / 2 - bh * math.tan(math.radians(1)), BOSS_D / 2, bh,
+            cq.Vector(x, y, BOSS_Z0), cq.Vector(0, 0, 1)))
         plate = plate.union(boss)
         hole = (cq.Workplane("XY").workplane(offset=BOSS_Z0).center(x, y)
                 .circle(CLIP_HOLE_D / 2).extrude(CLIP_HOLE_DEPTH))
