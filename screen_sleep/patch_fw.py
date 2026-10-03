@@ -21,7 +21,7 @@ import argparse, hashlib, json, lzma, os, struct, subprocess, sys, tempfile
 
 APP_BASE   = 0x08020000
 PATCH_BASE = 0x0803E000          # inside the zero padding after .data (ends 0x0803D6E4)
-VIAL_BASE  = 0x0803E200          # re-compressed Vial definition goes here
+VIAL_BASE  = 0x0803E800          # re-compressed Vial definition goes here
 PATCH_MAX  = 0x0803F700          # end of the original image
 UF2_FAMILY = 0x57755A57          # STM32F4
 SRC        = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screen_patch.S")
@@ -127,6 +127,45 @@ def patch_vial(img, base):
     put(VIAL_MOVW, movw(2, len(blob)))
     return len(blob)
 
+# Stock ST7735 init tables replayed by wake_table (see screen_patch.S)
+LCD_INIT_TABLES = [0x0803B785, 0x20000268, 0x0803B774, 0x0803B74F, 0x0803B748]
+
+def lcd_table_cmds(img, base, addr):
+    """Parse one stock init table: count, then (cmd, n|0x80 delay, args, [delay])."""
+    if addr >= 0x20000000:                       # .data copy: read its load image
+        addr = DATA_LMA + (addr - 0x20000000)
+    o = addr - base
+    n, o, cmds = img[o], o + 1, []
+    for _ in range(n):
+        cmd, na = img[o], img[o + 1]
+        o += 2
+        args = bytes(img[o:o + (na & 0x7F)])
+        o += na & 0x7F
+        delay = 0
+        if na & 0x80:
+            delay, o = img[o], o + 1
+        cmds.append((cmd, args, delay))
+    return cmds
+
+def check_wake_table(img, base, code, syms):
+    """The OP_CMD steps of wake_table must equal the stock tables, in order."""
+    t = syms["wake_table"] - PATCH_BASE
+    end = syms["wake_table_end"] - PATCH_BASE
+    o, cmds = t + 1, []
+    while o < end:
+        op = code[o]
+        if op == 0:
+            break
+        if op == 1:
+            cmd, n = code[o + 1], code[o + 2]
+            cmds.append((cmd, bytes(code[o + 3:o + 3 + n]), code[o + 3 + n]))
+            o += 4 + n
+        else:
+            o += 2
+    want = [c for a in LCD_INIT_TABLES for c in lcd_table_cmds(img, base, a)]
+    if cmds != want:
+        sys.exit("wake_table does not match the stock LCD init tables")
+
 def build_patch(tmp):
     obj, elf, binf = (os.path.join(tmp, n) for n in ("p.o", "p.elf", "p.bin"))
     subprocess.check_call(["arm-none-eabi-as", "-o", obj, SRC])
@@ -161,6 +200,7 @@ def main():
         code, syms = build_patch(tmp)
     if PATCH_BASE + len(code) > VIAL_BASE:
         sys.exit("patch too large")
+    check_wake_table(img, base, code, syms)
     p = PATCH_BASE - base
     if any(img[p:p + len(code)]):
         sys.exit("patch area is not empty")
