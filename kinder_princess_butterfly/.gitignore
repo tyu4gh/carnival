@@ -1,0 +1,4 @@
+out/asm_*.stl
+out/packed_*.stl
+out/egg_*.stl
+__pycache__/
