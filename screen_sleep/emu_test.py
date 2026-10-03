@@ -6,7 +6,7 @@ from unicorn import *
 from unicorn.arm_const import *
 import os; sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))); import patch_fw as p
 B,img=p.uf2_read(sys.argv[1])
-SCREEN_ON=0x20000240; MANUAL=0x20000241; AUTO=0x20000242; LAST=0x2000058c; USB=0x2000cb60; SUSP=0x2000cb54; RGB=0x200090b8
+SCREEN_ON=0x20000240; MANUAL=0x20000241; AUTO=0x20000242; SLPDIS=0x20000243; LAST=0x2000058c; USB=0x2000cb60; SUSP=0x2000cb54; RGB=0x200090b8
 STUBS={0x8027e7e:'timer_read32',0x8027e90:'timer_elapsed32',0x80227f4:'set_power',
        0x8026f04:'anim_close',0x8026f18:'anim_open',0x8020944:'memset',0x8022968:'lcd_fill',
        0x8022700:'orig_init',0x802279c:'orig_task',0x8022334:'orig_kb',0x802232e:'orig_wakeup',0x802ab5e:'orig_record'}
@@ -122,7 +122,7 @@ step2('SCR_NXT all broken: gives up',key(0x7e0a,1))
 st['bad']=set()
 mu.mem_write(ANIM_S+0x1c,b'\0\0\0\0')
 step2('SCR_NXT with no anim (MSC mode)',key(0x7e0a,1))
-step2('key 0x7e0c passes through',key(0x7e0c,1))
+step2('key 0x7e0d passes through',key(0x7e0d,1))
 
 
 # ================= auto-sleep must NOT power-cycle the panel =================
@@ -134,7 +134,7 @@ import sys
 fail=[]
 # fresh state
 for a in (SCREEN_ON,): mu.mem_write(a,b'\x01')
-mu.mem_write(MANUAL,b'\x00'); mu.mem_write(AUTO,b'\x00'); mu.mem_write(SUSP,b'\x00'); mu.mem_write(USB,b'\x00\x00\x00\x00'); mu.mem_write(RGB,b'\x00')
+mu.mem_write(MANUAL,b'\x00'); mu.mem_write(AUTO,b'\x00'); mu.mem_write(SUSP,b'\x00'); mu.mem_write(USB,b'\x00\x00\x00\x00'); mu.mem_write(RGB,b'\x00'); mu.mem_write(SLPDIS,b'\x00')
 st['now']=0x5000; key(0x04,1)                       # activity
 st['now']=0x5000+100; _,c=call(S['task_hook'])      # active
 if has(c,'power') or has(c,'blank'): fail.append('active frame touched panel')
@@ -154,6 +154,37 @@ if not has(c,'orig_task'): fail.append('wake did not resume screen_task')
 if mu.mem_read(AUTO,1)[0]!=0: fail.append('AUTO not cleared on wake')
 if mu.mem_read(RGB,1)[0]!=0: fail.append('RGB not woken')
 
+# ================= SLP_TOG: enable/disable auto-sleep at runtime =================
+# default: sleep enabled (SLPDIS byte 0)
+if mu.mem_read(SLPDIS,1)[0]!=0: fail.append('SLP default not enabled')
+# press SLP_TOG -> disables auto-sleep
+st['now']=0x9000; key(0x7e0c,1)
+if mu.mem_read(SLPDIS,1)[0]!=1: fail.append('SLP_TOG did not disable')
+# now go idle past timeout: must NOT sleep
+mu.mem_write(AUTO,b'\x00'); mu.mem_write(RGB,b'\x00'); mu.mem_write(SCREEN_ON,b'\x01')
+st['now']=0x9000+400000; _,c=call(S['task_hook'])
+if has(c,'blank'): fail.append('slept while disabled')
+if mu.mem_read(AUTO,1)[0]!=0: fail.append('AUTO set while disabled')
+if mu.mem_read(RGB,1)[0]!=0: fail.append('RGB slept while disabled')
+if not has(c,'orig_task'): fail.append('no refresh while disabled')
+# disable WHILE already asleep -> next tick wakes everything, no power-cycle
+mu.mem_write(SLPDIS,b'\x00')                        # re-enable
+st['now']=0xA000; key(0x04,1); call(S['task_hook'])  # active baseline
+st['now']=0xA000+400000; call(S['task_hook'])        # sleep
+if mu.mem_read(AUTO,1)[0]!=1 or mu.mem_read(RGB,1)[0]!=1: fail.append('did not sleep before disable test')
+st['now']=0xA000+400100; key(0x7e0c,1)               # disable while asleep
+_,c=call(S['task_hook'])
+if has(c,'power'): fail.append('disable-while-asleep power-cycled panel')
+if mu.mem_read(AUTO,1)[0]!=0: fail.append('disable-while-asleep did not resume GIF')
+if mu.mem_read(RGB,1)[0]!=0: fail.append('disable-while-asleep did not wake RGB')
+if not has(c,'orig_task'): fail.append('disable-while-asleep did not refresh')
+# re-enable -> sleep works again
+st['now']=0xB000; key(0x7e0c,1)                      # enable
+if mu.mem_read(SLPDIS,1)[0]!=0: fail.append('re-enable failed')
+st['now']=0xB000+100; key(0x04,1); call(S['task_hook'])
+st['now']=0xB000+400000; _,c=call(S['task_hook'])
+if not has(c,'blank'): fail.append('does not sleep after re-enable')
+
 print('\n==== fix assertions ====')
-print('PASS: waking by typing never calls the slow screen power-on' if not fail else 'FAIL: '+'; '.join(fail))
+print('PASS: all sleep/wake/toggle assertions' if not fail else 'FAIL: '+'; '.join(fail))
 sys.exit(1 if fail else 0)

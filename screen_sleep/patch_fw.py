@@ -48,6 +48,7 @@ NEW_KEYS      = [                # appended as customKeycodes[9..] -> 0x7E09..
     {"name": "SCR_TOG", "title": "Toggle screen on/off/开关屏幕", "shortName": "Screen\nOn/Off"},
     {"name": "SCR_NXT", "title": "Next GIF/下一个动画", "shortName": "GIF\nNext"},
     {"name": "SCR_PRV", "title": "Previous GIF/上一个动画", "shortName": "GIF\nPrev"},
+    {"name": "SLP_TOG", "title": "Toggle auto-sleep/开关自动休眠", "shortName": "Sleep\nOn/Off"},
 ]
 
 # .data initial value of the screen play mode (0 = loop current GIF, 1 = all in order)

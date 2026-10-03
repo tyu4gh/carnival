@@ -33,10 +33,13 @@
                                            written only by rgb init and suspend */
     .equ AUTO_SLEEP,        0x20000242  /* uint8: screen auto-slept (blanked+paused);
                                            padding after SCREEN_ON, zeroed at boot */
+    .equ SLEEP_DIS,         0x20000243  /* uint8: 1 = auto-sleep disabled by SLP_TOG;
+                                           padding after SCREEN_ON, zeroed at boot */
     .equ FLAG_RGB_SLEEP,    1
     .equ SCR_TOG,           0x7e09      /* QK_KB_9, customKeycodes[9] in Vial */
     .equ SCR_NXT,           0x7e0a      /* QK_KB_10 */
     .equ SCR_PRV,           0x7e0b      /* QK_KB_11 */
+    .equ SLP_TOG,           0x7e0c      /* QK_KB_12: enable/disable auto-sleep */
     .equ ANIM_SCREEN,       0x20000210  /* +0x14 frame delay, +0x1c anim_t* */
     .equ ANIM_FILE,         0x418       /* anim_t: FIL of the open .anm */
     .equ ANIM_COUNT,        0x1446      /* anim_t: uint16 number of files */
@@ -113,7 +116,21 @@ kb_hook:                        /* r0 = keycode, r1 = keyrecord_t* */
     adds    r2, #1
     cmp     r0, r2
     beq     prev_anim
+    adds    r2, #1
+    cmp     r0, r2
+    beq     toggle_sleep
     b.w     process_record_kb
+
+toggle_sleep:                   /* flip the auto-sleep enable flag; the next
+                                   task_hook tick wakes everything if disabling */
+    ldrb    r3, [r1, #5]        /* event.pressed */
+    cbz     r3, 1f
+    ldr     r2, =SLEEP_DIS
+    ldrb    r3, [r2]
+    eor     r3, r3, #1
+    strb    r3, [r2]
+1:  movs    r0, #0
+    bx      lr
 
 next_anim:
     movs    r3, #1
@@ -194,7 +211,10 @@ task_hook:
     ldrb    r3, [r3]
     cbnz    r3, do_task
     ldr     r3, timeout_ms
-    cbz     r3, do_task         /* auto-sleep disabled */
+    cbz     r3, do_task         /* auto-sleep not built in */
+    ldr     r3, =SLEEP_DIS      /* SLP_TOG turned auto-sleep off */
+    ldrb    r3, [r3]
+    cbnz    r3, wake_if_asleep
     ldr     r0, =LAST_ACTIVITY
     ldr     r0, [r0]
     bl      timer_elapsed32     /* r0 = now - last */
@@ -228,6 +248,21 @@ wake:
 do_task:
     pop     {r4, lr}
     b.w     screen_task
+
+wake_if_asleep:                 /* auto-sleep disabled: force everything awake */
+    ldr     r3, flags
+    tst     r3, #FLAG_RGB_SLEEP
+    beq     1f
+    movs    r2, #0
+    ldr     r3, =RGB_SLEEP      /* RGB back on */
+    strb    r2, [r3]
+1:  ldr     r2, =AUTO_SLEEP
+    ldrb    r3, [r2]
+    cmp     r3, #0              /* was not asleep -> normal refresh */
+    beq     do_task
+    movs    r3, #0              /* clear sleep state -> resume GIF */
+    strb    r3, [r2]
+    b       do_task
 
 /* Blank the LCD to black without touching PB9 power, so no slow re-init is
  * needed on wake.  Faithful copy of the stock screen_power(0) blank (buffer
