@@ -1,10 +1,10 @@
-"""CadQuery (OpenCascade) twin of the princess butterfly in rhino/kinder_rhino_build.py.
-Uses the same pure-python geometry functions, then checks:
+"""CadQuery (OpenCascade) twin of the princess butterfly v3 in rhino/kinder_rhino_build.py.
+Uses the same pure-python geometry functions (outline, offsets, hearts, decoration), then checks:
   - each part is one valid solid
-  - assembly: right wing on top of the left wing, hooks through the slots, no interference
-  - S-hook engagement under the left wing
-  - packing of the 4 parts inside the real closed capsule shell (searches a packing, prints PACK)
-Exports STEP/STL for preview and renders images."""
+  - assembly: no interference between the wings (clip pins = intended press fit)
+  - interlock: moving the right wing up / down / left / right collides with the left wing
+  - packing of the 4 parts inside the real closed capsule shell (prints PACK for the Rhino script)
+Exports STEP/STL for preview."""
 import math, os, sys, itertools
 import cadquery as cq
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +13,7 @@ import kinder_rhino_build as K
 
 B, E = K.BF, K.EGG
 OUT = os.path.join(HERE, "out")
+os.makedirs(OUT, exist_ok=True)
 T = B['T']
 
 
@@ -23,17 +24,12 @@ def wire(segs, wp):
     return w
 
 
-def rev_partial(segs, c, a0, a1):
-    s = wire(segs, cq.Workplane("XZ")).close().revolve(a1 - a0, (0, 0, 0), (0, 1, 0))
-    return s.rotate((0, 0, 0), (0, 0, 1), a0).translate((c[0], c[1], 0))
-
-
 def rev_full(segs, origin):
     return wire(segs, cq.Workplane("XZ")).close().revolve(360, (0, 0, 0), (0, 1, 0)).translate(origin)
 
 
-def spline_closed(pts, z):
-    return cq.Workplane("XY").workplane(offset=z).spline(pts, periodic=True).close()
+def prism(pts, z0, z1):
+    return cq.Workplane("XY").workplane(offset=z0).spline(pts, periodic=True).close().extrude(z1 - z0)
 
 
 def tube(pts, z, r):
@@ -48,26 +44,25 @@ def tube(pts, z, r):
     return s
 
 
-def U(a, b):
-    return a.union(b) if a is not None else b
+def vol(s):
+    try:
+        return sum(v.Volume() for v in s.solids().vals())
+    except Exception:
+        return 0.0
 
 
 def wing(side):
-    mc = K.medallion_c(side)
-    plate = spline_closed(K.wing_outline_pts(side), 0).extrude(T)
-    try:
-        plate = plate.faces(">Z").edges().fillet(B['EDGE_FILLET'])
-    except Exception as ex:
-        print("  plate fillet skipped:", ex)
-    med = cq.Workplane().center(*mc).circle(B['MED_R']).extrude(T).faces(">Z").edges().fillet(B['EDGE_FILLET'])
-    w = plate.union(med)
-    zd = T + B['DECO_Z']
-    for pts in K.border_pts(side):
-        w = w.union(tube(pts, zd, B['BORDER_R']))
+    own, other = K.wing_outline_pts(side), K.wing_outline_pts(-side)
+    plate = prism(own, 0, T)
+    plate = plate.faces(">Z").edges().fillet(B['FILLET_TOP'])
+    plate = plate.faces("<Z").edges().fillet(B['FILLET_BOT'])
+    w = plate
+    for run in K.border_runs(side):
+        w = w.union(tube(run, T, B['DECO_R']))
     for v in K.vein_pts(side):
-        w = w.union(tube(v, zd, B['VEIN_R']))
+        w = w.union(tube(v, T, B['DECO_R']))
     for (x, y, r) in K.pearl_pts(side):
-        w = w.union(cq.Workplane().add(cq.Solid.makeSphere(r, cq.Vector(x, y, T - 0.12))))
+        w = w.union(cq.Workplane().add(cq.Solid.makeSphere(r, cq.Vector(x, y, T - 0.1))))
     bh = B['BOSS_H'] + 0.2
     rt = B['BOSS_D'] / 2
     rb = rt - bh * math.tan(math.radians(B['BOSS_DRAFT']))
@@ -75,33 +70,25 @@ def wing(side):
         w = w.union(rev_full(K.pin_profile(rb, rt, bh), (x, y, -B['BOSS_H'])))
     cuts = [rev_full(K.hole_profile(B['CLIP_HOLE_D'] / 2, B['CLIP_HOLE_DEPTH']), (x, y, -B['BOSS_H']))
             for (x, y) in K.boss_pos(side)]
-    R = B['MED_R']
-    if side > 0:
-        rs = (B['GEM_R'] ** 2 + B['GEM_H'] ** 2) / (2 * B['GEM_H'])
-        sph = cq.Workplane().add(cq.Solid.makeSphere(rs, cq.Vector(mc[0], mc[1], T + B['GEM_H'] - rs)))
-        w = w.union(sph.intersect(cq.Workplane().box(20, 20, 5, centered=(True, True, False))
-                                  .translate((mc[0], mc[1], T - K.EPS))))
-        w = w.union(cq.Workplane().add(cq.Solid.makeTorus(B['BEZEL_R'], B['BEZEL_PIPE'],
-                                                          cq.Vector(mc[0], mc[1], zd), cq.Vector(0, 0, 1))))
-        for i in range(B['BEAD_N']):
-            a = 2 * math.pi * (i + 0.5) / B['BEAD_N']
-            w = w.union(cq.Workplane().add(cq.Solid.makeSphere(
-                B['BEAD_R'], cq.Vector(mc[0] + B['BEAD_RING'] * math.cos(a), mc[1] + B['BEAD_RING'] * math.sin(a), T - 0.05))))
-        hooks, keys = K.hook_spans()
-        for (a0, a1) in hooks:
-            w = w.union(rev_partial(K.hook_profile(), mc, a0, a1))
-            cuts.append(rev_partial(K.rect_profile(R - B['HOOK_T'] - B['RELIEF_W'], R - B['HOOK_T'], -0.5, B['RELIEF_D']),
-                                    mc, a0 - 1, a1 + 1))
-        for (a0, a1) in keys:
-            w = w.union(rev_partial(K.rect_profile(R - B['SLOT_IN'] + 0.03, R - B['SLOT_IN'] + 0.63, -T, 0.3), mc, a0, a1))
+    if side < 0:
+        band = prism(K.offset_closed(other, -B['THICK_BAND']), B['THICK_Z0'], 0.5).intersect(
+            prism(K.offset_closed(own, B['THICK_INSET']), B['THICK_Z0'] - 1, 1.0))
+        w = w.union(band)
+        cuts.append(prism(K.offset_closed(other, -B['CLR']), B['THICK_Z0'] - 0.3, B['LIP_Z0']))
+        for c in cuts:
+            w = w.cut(c)
+        hearts = K.heart_windows()
+        for (p, r) in K.tab_discs():
+            w = w.union(cq.Workplane().add(cq.Solid.makeCylinder(r, 0.5 - B['TAB_Z0'], cq.Vector(p[0], p[1], B['TAB_Z0']))))
+        for (c, wd, tab) in hearts:
+            w = w.cut(prism(K.heart_pts(c, wd), B['FLOOR_Z'], T + 1))
     else:
-        cuts.append(cq.Workplane("XY").workplane(offset=T - B['HEART_D'])
-                    .spline(K.heart_pts(), periodic=True).close().extrude(B['HEART_D'] + 1))
-        for (a0, a1) in K.slot_spans():
-            cuts.append(rev_partial(K.rect_profile(R - B['SLOT_IN'], R + B['SLOT_OUT'], -1, T + 1),
-                                    K.medallion_c(+1), a0, a1))
-    for c in cuts:
-        w = w.cut(c)
+        cuts.append(prism(K.offset_closed(other, -B['CLR']), B['TONGUE_T'], T + 1))
+        for c in cuts:
+            w = w.cut(c)
+        g, r0, r1 = K.gem()
+        w = w.union(rev_full(K.pin_profile(r0 + K.EPS, r1, B['GEM_H'] + K.EPS),
+                             (g[0], g[1], B['TONGUE_T'] - K.EPS)))
     return w
 
 
@@ -118,44 +105,39 @@ def clip_on_wing(c, side):
     return c.translate((x - B['CLIP_W'] / 2, y - B['CLIP_PIN_Y'][0], -B['BOSS_H']))
 
 
-def vol(s):
-    try:
-        return s.val().Volume() if s.solids().size() else 0.0
-    except Exception:
-        return 0.0
-
-
 def info(n, s):
     v = s.val()
     bb = v.BoundingBox()
     print("%-8s valid=%s solids=%d vol=%.0f mm3 (%.2f g ABS)  bbox %.1f x %.1f x %.1f" %
-          (n, v.isValid(), s.solids().size(), v.Volume(), v.Volume() * 1.05e-3, bb.xlen, bb.ylen, bb.zlen))
+          (n, v.isValid(), s.solids().size(), vol(s), vol(s) * 1.05e-3, bb.xlen, bb.ylen, bb.zlen))
 
 
 if __name__ == "__main__":
-    print(K.check_princess())
+    for k, v in K.check_princess().items():
+        print(("OK   " if v[0] else "FAIL ") + k, v[1])
     wr, wl, cl = wing(+1), wing(-1), clip()
     for n, s in (("wing_R", wr), ("wing_L", wl), ("clip", cl)):
         info(n, s)
         cq.exporters.export(s, os.path.join(OUT, "princess_%s.step" % n))
         cq.exporters.export(s, os.path.join(OUT, "princess_%s.stl" % n), tolerance=0.02, angularTolerance=0.1)
     # ---- assembly
-    asm = {"wing_L": wl, "wing_R": wr.translate((0, 0, T)),
-           "clip_L": clip_on_wing(cl, -1), "clip_R": clip_on_wing(cl, +1).translate((0, 0, T))}
+    asm = {"wing_L": wl, "wing_R": wr, "clip_L": clip_on_wing(cl, -1), "clip_R": clip_on_wing(cl, +1)}
     names = list(asm)
     for i in range(4):
         for j in range(i + 1, 4):
             v = vol(asm[names[i]].intersect(asm[names[j]]))
-            if v > 1e-4 and not ("clip" in names[i] + names[j] and "wing" in names[i] + names[j]):
-                print("  ASM CLASH", names[i], names[j], round(v, 4))
+            pair = names[i] + "/" + names[j]
+            if v > 1e-4 and not ("clip" in pair and "wing" in pair):
+                print("  ASM CLASH", pair, round(v, 4))
             elif v > 1e-4:
-                print("  press fit %s/%s %.3f mm3 (pin interference, intended)" % (names[i], names[j], v))
-    # S-hook engagement: lip overlaps the left wing underside in plan, and does not touch it
-    mc = K.medallion_c(+1)
-    lip_band = (cq.Workplane().center(*mc).circle(B['MED_R'] + B['LIP']).circle(B['MED_R'] + B['SLOT_OUT'])
-                .extrude(0.2))
-    print("left wing material directly above the lips (engagement band area x0.2mm): %.3f mm3"
-          % vol(wl.intersect(lip_band)))
+                print("  press fit %s %.3f mm3 (pin interference, intended)" % (pair, v))
+    print("wing_R / wing_L interference: %.4f mm3" % vol(wr.intersect(wl)))
+    # ---- interlock: every escape direction of the right wing must hit the left wing
+    for name, d in (("up 0.3", (0, 0, 0.3)), ("down 0.3", (0, 0, -0.3)),
+                    ("out to the right 0.6", (0.6, 0, 0)), ("in to the left 0.6", (-0.6, 0, 0)),
+                    ("forward 0.6", (0, 0.6, 0)), ("back 0.6", (0, -0.6, 0))):
+        v = vol(wr.translate(d).intersect(wl))
+        print("  interlock: right wing moved %-22s -> collision %.3f mm3 %s" % (name, v, "BLOCKED" if v > 1e-3 else "free"))
     a = cq.Assembly()
     cols = {"wing_L": (0.80, 0.62, 0.95), "wing_R": (0.96, 0.55, 0.78), "clip_L": (1, 1, 1), "clip_R": (1, 1, 1)}
     for n, s in asm.items():
@@ -171,6 +153,8 @@ if __name__ == "__main__":
     shell = base.union(cap)
     env = rev(K.egg_base_outer()).union(rev(K.egg_cap_outer()))
     zc = E['L_TOTAL'] / 2
+    for nm, s in (("base_hinge", base), ("cap", cap)):
+        cq.exporters.export(s, os.path.join(OUT, "egg_Egg_Closed_%s.stl" % nm), tolerance=0.03)
 
     def place(s, rx, rz, d):
         return s.rotate((0, 0, 0), (1, 0, 0), rx).rotate((0, 0, 0), (0, 0, 1), rz).translate(d)
@@ -182,7 +166,6 @@ if __name__ == "__main__":
     parts = {"R": wr, "L": wl, "C": cl}
     g = 0.4
     best = None
-    # wings side by side in the middle, clips outside; try facing directions of the wings
     for rxR, rxL in itertools.product((90, -90), (90, -90)):
         dR, tR = centre(wr, rxR, 0)
         dL, tL = centre(wl, rxL, 0)
@@ -194,7 +177,7 @@ if __name__ == "__main__":
                 ("C", (90, 180, -dC[0], -dC[1] + y0 - g - tC / 2, dC[2]))]
         placed = [place(parts[k], tr[0], tr[1], tr[2:]) for k, tr in cand]
         clash = sum(vol(p.intersect(shell)) for p in placed)
-        outside = sum(p.val().Volume() - vol(p.intersect(env)) for p in placed)
+        outside = sum(vol(p) - vol(p.intersect(env)) for p in placed)
         mutual = sum(vol(placed[i].intersect(placed[j])) for i in range(4) for j in range(i + 1, 4))
         dmin = min(p.val().distance(shell.val()) for p in placed) if clash < 1e-6 else 0
         print("pack rxR=%d rxL=%d: shell clash %.3f, outside %.3f, mutual %.3f, min clearance %.2f"
@@ -204,8 +187,6 @@ if __name__ == "__main__":
     if best:
         print("PACKING OK, min clearance %.2f mm" % best[0])
         print("PACK = [" + ",\n        ".join('("%s", (%g, %g, %.3f, %.3f, %.3f))' % ((k,) + tuple(tr)) for k, tr in best[1]) + "]")
-        for (k, _), p in zip(best[1], best[2]):
-            pass
         for i, p in enumerate(best[2]):
             cq.exporters.export(p, os.path.join(OUT, "ppack_%d.stl" % i), tolerance=0.03)
     else:
