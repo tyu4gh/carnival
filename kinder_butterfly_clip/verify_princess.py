@@ -32,6 +32,14 @@ def prism(pts, z0, z1):
     return cq.Workplane("XY").workplane(offset=z0).spline(pts, periodic=True).close().extrude(z1 - z0)
 
 
+def band_prism(z0, z1):
+    arc, box_pts = K.band_outline()
+    w = cq.Workplane("XY").workplane(offset=z0).moveTo(*arc[0]).spline(arc[1:], includeCurrent=True)
+    for p in box_pts[1:-1]:
+        w = w.lineTo(*p)
+    return w.close().extrude(z1 - z0)
+
+
 def tube(pts, z, r):
     """swept circle along an open spline + round end caps"""
     path = cq.Workplane("XY").spline([(x, y, z) for (x, y) in pts], includeCurrent=False)
@@ -71,7 +79,7 @@ def wing(side):
     cuts = [rev_full(K.hole_profile(B['CLIP_HOLE_D'] / 2, B['CLIP_HOLE_DEPTH']), (x, y, -B['BOSS_H']))
             for (x, y) in K.boss_pos(side)]
     if side < 0:
-        band = prism(K.offset_closed(other, -B['THICK_BAND']), B['THICK_Z0'], 0.5).intersect(
+        band = band_prism(B['THICK_Z0'], 0.5).intersect(
             prism(K.offset_closed(own, B['THICK_INSET']), B['THICK_Z0'] - 1, 1.0))
         w = w.union(band)
         cuts.append(prism(K.offset_closed(other, -B['CLR']), B['THICK_Z0'] - 0.3, B['LIP_Z0']))

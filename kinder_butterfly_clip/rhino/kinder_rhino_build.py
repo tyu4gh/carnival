@@ -497,6 +497,19 @@ def _runs(pts, keep, closed):
     return [r for r in runs if len(r) >= 4]
 
 
+def band_outline(B=BF):
+    """footprint of the female thick band (before trimming to the left wing): the right wing root
+    edge offset outwards by THICK_BAND, closed by a large box towards +X. Only the root-side arc
+    of the offset is used - the far side (wing notch) would pinch into a cusp.
+    Returns (arc points for an open spline, polyline points that close it)."""
+    off = offset_closed(wing_outline_pts(+1, B), -B['THICK_BAND'])
+    runs = _runs(off, [p[0] < 6.0 for p in off], True)
+    arc = max(runs, key=len)
+    if arc[0][1] < arc[-1][1]:
+        arc = arc[::-1]                       # top -> bottom
+    return arc, [arc[-1], (40.0, arc[-1][1] - 30.0), (40.0, arc[0][1] + 30.0), arc[0]]
+
+
 def deco_keep(p, side, B=BF):
     """decoration point allowed: away from the other wing's footprint (symmetric trim)"""
     other = wing_outline_pts(-side, B)
@@ -583,6 +596,7 @@ if RHINO:
     ATOL = doc.ModelAngleToleranceRadians
     LOG = []
     DEBUG = []
+    DEBUG_CRV = []
 
     def log(msg):
         LOG.append(msg)
@@ -614,17 +628,37 @@ if RHINO:
         return res[0]
 
     def union(items, what):
+        if items and items[0] is None:
+            log("  !! union %s: base solid missing" % what)
         items = [b for b in items if b is not None]
+        if not items:
+            return None
         if len(items) == 1:
             return items[0]
-        r = one(rg.Brep.CreateBooleanUnion(blist(items), TOL), "union " + what, items[0])
-        if r is None:
-            DEBUG.extend(items[1:])
-            return items[0]
-        return r
+        res = rg.Brep.CreateBooleanUnion(blist(items), TOL)
+        if res is not None and len(res) > 0:
+            r = one(res, "union " + what, items[0])
+            if r is not None:
+                return r
+        # bulk union failed: add the pieces one by one, skipping only the ones that fail
+        log("  .. union %s: bulk union failed, adding %d pieces one by one" % (what, len(items) - 1))
+        acc = items[0]
+        for k, b in enumerate(items[1:]):
+            r = one(rg.Brep.CreateBooleanUnion(blist([acc, b]), TOL), "union %s piece %d" % (what, k + 1), acc)
+            if r is None:
+                DEBUG.append(b)
+            else:
+                acc = r
+        return acc
 
     def diff(a, cutters, what):
+        if a is None:
+            log("  !! %s: nothing to cut from" % what)
+            return None
         for i, c in enumerate(cutters):
+            if c is None:
+                log("  !! %s #%d: cutter missing, skipped" % (what, i))
+                continue
             r = one(rg.Brep.CreateBooleanDifference(a, c, TOL), "difference %s #%d" % (what, i), a)
             if r is None:
                 DEBUG.append(c)
@@ -633,6 +667,9 @@ if RHINO:
         return a
 
     def inter(a, b, what):
+        if a is None or b is None:
+            log("  !! intersection %s: operand missing" % what)
+            return a if b is None else b
         r = one(rg.Brep.CreateBooleanIntersection(a, b, TOL), "intersection " + what, a)
         if r is None:
             DEBUG.append(b)
@@ -700,14 +737,59 @@ if RHINO:
         b = b.CapPlanarHoles(TOL)
         return solidify(b, what)
 
+    def _closed_solid(b):
+        if b is None:
+            return None
+        if b.SolidOrientation == rg.BrepSolidOrientation.Inward:
+            b.Flip()
+        return b if b.IsSolid else None
+
     def extrude_curve(crv, z0, h, what):
+        """closed planar curve at height z0 -> capped solid z0..z0+h. Three methods, first that
+        gives a closed solid wins: Extrusion.Create (= ExtrudeCrv), surface + planar caps, rebuilt curve."""
+        if crv is None:
+            log("  !! %s: outline curve is None" % what)
+            return None
         c = crv.DuplicateCurve()
         c.Translate(rg.Vector3d(0, 0, z0 - c.PointAtStart.Z))
-        srf = rg.Surface.CreateExtrusion(c, rg.Vector3d(0, 0, h))
-        b = srf.ToBrep()
-        b.Faces.SplitKinkyFaces(Rhino.RhinoMath.DefaultAngleTolerance, True)
-        b = b.CapPlanarHoles(TOL)
-        return solidify(b, what)
+        if not c.IsClosed:
+            c.MakeClosed(TOL)
+
+        def m_extrusion(cv):
+            ext = rg.Extrusion.Create(cv, h, True)
+            if ext is None:
+                return None
+            b = ext.ToBrep(True)
+            bb = b.GetBoundingBox(True)
+            if bb.Max.Z < z0 + h / 2:          # extruded the other way (curve plane normal = -Z)
+                b.Translate(rg.Vector3d(0, 0, h))
+            return _closed_solid(b)
+
+        def m_caps(cv):
+            side = rg.Surface.CreateExtrusion(cv, rg.Vector3d(0, 0, h)).ToBrep()
+            top = cv.DuplicateCurve()
+            top.Translate(rg.Vector3d(0, 0, h))
+            pieces = [side]
+            for k in (cv, top):
+                caps = rg.Brep.CreatePlanarBreps(k, TOL)
+                if caps is None or len(caps) == 0:
+                    return None
+                pieces.extend(caps)
+            j = rg.Brep.JoinBreps(blist(pieces), TOL)
+            return _closed_solid(j[0]) if j is not None and len(j) == 1 else None
+
+        for name, fn, cv in (("Extrusion.Create", m_extrusion, c), ("surface + caps", m_caps, c),
+                             ("rebuilt curve", m_extrusion, c.Rebuild(80, 3, True))):
+            try:
+                b = fn(cv) if cv is not None else None
+            except Exception as ex:
+                b = None
+                log("  .. %s: %s raised %s" % (what, name, ex))
+            if b is not None:
+                return b
+        log("  !! %s: could not make a closed solid (curve added to _Debug)" % what)
+        DEBUG_CRV.append(c)
+        return None
 
     def box(x0, x1, y0, y1, z0, z1):
         return rg.Box(rg.BoundingBox(min(x0, x1), min(y0, y1), min(z0, z1),
@@ -717,6 +799,8 @@ if RHINO:
         return rg.Cylinder(rg.Circle(rg.Plane(rg.Point3d(x, y, z0), rg.Vector3d.ZAxis), r), h).ToBrep(True, True)
 
     def fillet_edges(b, pred, radius, what):
+        if b is None:
+            return None
         idx, rad = List[int](), List[float]()
         for e in b.Edges:
             if pred(e):
@@ -838,6 +922,8 @@ if RHINO:
         own, other = wing_outline_pts(side), wing_outline_pts(-side)
         log("Butterfly: %s wing" % ("P1 right (male)" if side > 0 else "P2 left (female)"))
         plate = prism(own, 0.0, t, "wing plate")
+        if plate is None:
+            return None
         plate = fillet_edges(plate, edge_at_z(t), B['FILLET_TOP'], "wing rim top")
         plate = fillet_edges(plate, edge_at_z(0.0), B['FILLET_BOT'], "wing rim bottom")
         adds = [plate]
@@ -858,7 +944,13 @@ if RHINO:
                         (x, y, -B['BOSS_H'])) for (x, y) in boss_pos(side)]
         if side < 0:
             # FEMALE: thicker band behind the slot (right wing root edge + THICK_BAND, inside own rim)
-            band = inter(prism(offset_closed(other, -B['THICK_BAND']), B['THICK_Z0'], 0.5, "band A"),
+            arc, box_pts = band_outline()
+            cl = List[rg.Curve]()
+            cl.Add(interp(arc, B['THICK_Z0']))
+            cl.Add(rg.PolylineCurve(pts3(box_pts, B['THICK_Z0'])))
+            band_crv = rg.Curve.JoinCurves(cl, TOL)
+            band = inter(extrude_curve(band_crv[0] if band_crv is not None and len(band_crv) else None,
+                                       B['THICK_Z0'], 0.5 - B['THICK_Z0'], "band A"),
                          prism(offset_closed(own, B['THICK_INSET']), B['THICK_Z0'] - 1, 1.0, "band B"),
                          "thick root band")
             adds.append(band)
@@ -907,6 +999,9 @@ if RHINO:
         """packing inside the closed capsule (positions found and verified by ../verify_princess.py)"""
         out = []
         for key, tr in PACK:
+            if parts[key] is None:
+                out.append(None)
+                continue
             b = xf(parts[key], rg.Transform.Rotation(math.radians(tr[0]), rg.Vector3d.XAxis, rg.Point3d.Origin))
             b.Transform(rg.Transform.Rotation(math.radians(tr[1]), rg.Vector3d.ZAxis, rg.Point3d.Origin))
             b.Transform(rg.Transform.Translation(tr[2], tr[3], tr[4]))
@@ -980,13 +1075,26 @@ if RHINO:
                     add(sect, layer("Egg_Closed_Section", (255, 200, 120)), "Egg_Closed_Section_" + sub,
                         (0, -E['STATE_DY'], 0))
 
-        parts = {'R': wing(+1), 'L': wing(-1), 'C': clip_part()}
+        import traceback
+
+        def safe(fn, arg, name):
+            try:
+                r = fn(arg) if arg is not None else fn()
+            except Exception:
+                log("  !! %s raised an error:\n%s" % (name, traceback.format_exc()))
+                return None
+            if r is None:
+                log("  !! %s: no solid produced" % name)
+            return r
+        parts = {'R': safe(wing, +1, "P1 right wing"), 'L': safe(wing, -1, "P2 left wing"),
+                 'C': safe(clip_part, None, "P3 clip")}
         ax, ay, az = B['ASM_OFFSET']
         la = layer("Butterfly_Assembly", (245, 120, 180))
         add(parts['L'], la, "P2_wing_L (female)", (ax, ay, az))
         add(parts['R'], la, "P1_wing_R (male)", (ax, ay, az))
-        add(clip_on_wing(parts['C'], -1), la, "P3_clip_L", (ax, ay, az))
-        add(clip_on_wing(parts['C'], +1), la, "P3_clip_R", (ax, ay, az))
+        if parts['C'] is not None:
+            add(clip_on_wing(parts['C'], -1), la, "P3_clip_L", (ax, ay, az))
+            add(clip_on_wing(parts['C'], +1), la, "P3_clip_R", (ax, ay, az))
         lp = layer("Butterfly_Parts", (120, 160, 245))
         ox, oy, oz = B['PARTS_OFFSET']
         uv = "ABS + UV colour-change coating"
@@ -995,12 +1103,21 @@ if RHINO:
         add(parts['C'], lp, "P3_clip (x2)", (ox + 75, oy - 12, oz), dict(material="ABS", qty=2))
         lk = layer("Packed_In_Egg", (240, 80, 150))
         for (key, _), b in zip(PACK, pack_in_egg(parts)):
+            if b is None:
+                continue
             add(b, lk, "packed_" + key)
             add(b, lk, "packed_" + key + "_section", (0, -E['STATE_DY'], 0))
-        if DEBUG:
+        if DEBUG or DEBUG_CRV:
             ld = layer("_Debug", (255, 0, 0))
             for b in DEBUG:
                 add(b, ld, "failed boolean operand")
+            for c in DEBUG_CRV:
+                a = Rhino.DocObjects.ObjectAttributes()
+                a.LayerIndex = ld
+                a.Name = "outline that would not extrude"
+                c2 = c.DuplicateCurve()
+                c2.Transform(SCALE)
+                doc.Objects.AddCurve(c2, a)
         doc.Views.Redraw()
         fails = [m for m in LOG if m.strip().startswith("!!")]
         print("---- done: %d warnings%s" % (len(fails), "" if not fails else " (see above)"))
