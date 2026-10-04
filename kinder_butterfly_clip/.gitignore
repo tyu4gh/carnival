@@ -3,3 +3,5 @@ out/pack_*.stl
 out/capsule_inner_space.stl
 out/egg_*.stl
 out/packedegg_*.stl
+out/pasm_*.stl
+out/ppack_*.stl

@@ -1,25 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-Kinder Surprise capsule + butterfly hair-clip toy, built from scratch with RhinoCommon.
+Kinder Surprise capsule + "Fairytale Princess" butterfly hair clip, built from scratch with RhinoCommon.
 
-How to run (Rhino 7 or Rhino 8, Windows or Mac):
+How to run (Rhino 7 / 8 / 9 WIP, Windows or Mac):
     Rhino command line  ->  RunPythonScript  ->  pick this file
-    (Rhino 8: also works from ScriptEditor, IronPython or CPython 3)
+    or ScriptEditor -> open this file -> Run (IronPython 2 or CPython 3 both work)
 
-Everything is parametric: edit the parameter blocks below and run again.
+Everything is parametric: edit EGG / BF below and run again.
 Objects created by a previous run (layer tree "KinderToy") are deleted first.
+
+Toy (4 parts, injection moulded ABS, no metal, all straight-pull tools):
+    P1 right wing  - lies on top; jewel medallion + 2 S-hooks underneath
+    P2 left wing   - lies below; heart medallion + 2 arc slots the hooks snap through
+    P3 clip x2     - identical one-piece ABS spring clip, press-fits under either wing
 
 Output layers (parent "KinderToy"):
     Egg_Closed / Egg_HalfOpen / Egg_Open      capsule with wall thickness, 3 hinge states
     Egg_Closed_Section                        closed capsule cut in half + packed toy inside
     Butterfly_Assembly                        4 parts assembled
-    Butterfly_Parts                           P1 wing R, P2 wing L, P3 clip (x2 identical)
+    Butterfly_Parts                           P1, P2, P3 laid out
     Packed_In_Egg                             4 parts in their packing position (inside Egg_Closed)
     _Debug                                    only filled if a boolean failed (see command line)
 
 Units: all parameters are millimetres. If the document is in another unit the result is scaled.
-Code style: Python 2.7 / 3 compatible (IronPython in Rhino 7, IronPython or CPython in Rhino 8).
-The geometry maths (profiles, outlines, hinge) is plain Python, so it can be checked outside Rhino.
+The geometry maths (profiles, outlines, hooks, packing) is plain Python and is cross-checked
+outside Rhino by ../verify_rhino_math.py and ../verify_princess.py (CadQuery / OpenCascade).
 """
 from __future__ import division, print_function
 import math
@@ -74,31 +79,60 @@ EGG = dict(
 )
 
 # =====================================================================================
-# PARAMETERS - BUTTERFLY TOY  (same values as ../build.py)
-# assembled frame: X = span (right wing +X), Y = body axis (head +Y), Z = up
+# PARAMETERS - "FAIRYTALE PRINCESS" BUTTERFLY HAIR CLIP  (4 parts, ABS, no metal)
+# assembled frame: X = span (right wing +X), Y = head direction, Z = up.
+# Each wing is modelled in its own local Z (plate z 0..T); in the assembly the right wing
+# lies on top of the left wing (right wing z offset = T).
 # =====================================================================================
 BF = dict(
-    BODY_W=8.0, BODY_Y0=-13.0, BODY_Y1=14.0, BODY_H=5.0,
-    BODY_TOP_FILLET=2.0, BODY_BOT_FILLET=0.6,
-    LAP_Z=2.2,                                  # lap joint split height
-    PLATE_Z0=2.3, PLATE_T=1.8, PLATE_FILLET=0.5,
-    JOIN_PIN_D=2.05, JOIN_HOLE_D=2.00, JOIN_PIN_H=1.8, JOIN_HOLE_DEPTH=2.0,
-    JOIN_PIN_POS=[(-2.0, -6.0), (-2.0, 6.0)],
-    BOSS_D=5.0, BOSS_Z0=0.7, BOSS_DRAFT=1.0,
+    T=1.6,                       # wing plate thickness
+    # right-wing outline = uniform periodic cubic B-spline through these control points
+    CTRL=[(1.2, 3.0), (1.6, 9.0), (4.2, 15.5), (9.0, 20.6), (15.5, 22.0), (20.0, 19.6),
+          (21.2, 14.2), (18.6, 8.6), (14.6, 5.0), (11.4, 2.0), (14.4, -0.6), (17.6, -4.6),
+          (18.0, -9.8), (14.8, -13.8), (9.6, -14.6), (5.2, -11.6), (2.4, -6.6), (1.2, -2.5)],
+    SAMPLES=24,                  # samples per span (verification / border offset)
+    EDGE_FILLET=0.5,             # top edge fillet of plate and medallion
+    # root medallion (round "OO" overlap): right wing centre (-MED_X, 0), left (+MED_X, 0)
+    MED_R=5.0, MED_X=1.5,
+    # raised decoration on the top face (UV colour-change coating goes over it)
+    BORDER_OFF=1.4, BORDER_R=0.40, BORDER_XMIN=7.0,   # inner border bead, starts away from the root
+    DECO_Z=-0.08,                # pipe centre below top face -> raised ~0.3
+    VEIN_R=0.42,
+    VEINS=[[(7.6, 5.0), (9.6, 9.6), (12.4, 14.0), (15.6, 16.8), (18.0, 16.6), (18.2, 14.6), (16.9, 14.0)],
+           [(8.4, 3.6), (11.8, 6.2), (15.4, 8.4), (17.8, 11.0), (17.0, 12.4)],
+           [(7.6, -2.6), (9.4, -6.2), (11.6, -9.6), (13.8, -11.4), (15.2, -10.0), (14.2, -8.9)],
+           [(8.6, -1.4), (11.8, -2.8), (14.6, -4.6), (15.6, -6.6)]],
+    PEARLS=[(11.6, 11.6, 0.55), (15.2, 13.2, 0.48), (13.6, 9.4, 0.38),
+            (10.8, -6.6, 0.48), (13.4, -7.4, 0.40), (6.6, 9.2, 0.38)],
+    # right wing: cabochon gem + bezel + bead ring on the medallion (the butterfly "body" jewel)
+    GEM_R=3.0, GEM_H=1.3, BEZEL_R=3.35, BEZEL_PIPE=0.35, BEAD_RING=4.35, BEAD_N=14, BEAD_R=0.36,
+    # left wing: recessed heart on its medallion (hidden under the jewel when assembled)
+    HEART_W=5.2, HEART_D=0.35,
+    # S-hook snap: 2 hooks under the right medallion edge, through 2 arc slots in the left wing
+    HOOK_ANG=[130.0, 230.0],     # hook centre angles around the right medallion centre (deg)
+    HOOK_SPAN=3.0,               # hook length along the arc (mm, at MED_R)
+    HOOK_T=0.6,                  # hook web thickness (radial)
+    LIP=0.25,                    # lip overhang = catch engagement
+    LIP_CLR=0.05,                # gap between lip and the left wing underside
+    LEAD_H=0.85,                 # 45 deg lead-in height below the lip
+    RELIEF_W=0.5, RELIEF_D=1.0,  # relief groove inside the hook (from below): longer, softer hook
+    KEY_SPAN=1.2, KEY_GAP=0.6,   # rigid key next to each hook: stops the wing sliding inward
+    SLOT_IN=0.85, SLOT_OUT=0.05, SLOT_CLR=0.15,   # slot radial extents / end clearance
+    # clip interface (same clip as before)
+    BOSS_D=5.0, BOSS_H=1.5, BOSS_DRAFT=1.0,
     CLIP_PIN_D=2.25, CLIP_HOLE_D=2.20, CLIP_PIN_H=2.1, CLIP_HOLE_DEPTH=2.3,
-    BOSS_POS=[(10.5, -6.0), (10.5, 10.0)],      # right wing, mirrored for left
-    CLIP_W=7.0, CLIP_L=24.0, CLIP_T=1.4,
-    CLIP_PIN_Y=[4.0, 20.0],
-    WING_PTS=[(2.5, 4), (5, 12), (10, 16.5), (16, 17.5), (21, 15), (22.5, 10),
-              (19, 4.5), (14, 1.0), (16.5, -3), (18, -9), (15.5, -14), (9, -14.5),
-              (4.5, -10), (2.5, -4)],
-    SPOTS=[((15.5, 11.0), 3.2), ((12.5, -8.5), 2.4), ((7.5, 7.0), 1.6)],
-    SPOT_H=0.4,
-    ANT_PTS=[(1.6, 12.0), (3.0, 16.5), (5.8, 19.2)], ANT_Z=3.7, ANT_R=0.9, ANT_BALL=1.5,
-    GROOVES_Y=[-9.0, -6.0, -3.0], EYES=[(-2.0, 11.0), (2.0, 11.0)],
-    ASM_OFFSET=(110.0, 0.0, 0.0),      # where the assembled butterfly is placed
-    PARTS_OFFSET=(170.0, 0.0, 0.0),    # where the loose parts are laid out
+    BOSS_POS=[(10.5, -6.8), (10.5, 9.2)],       # right wing; mirrored for the left
+    CLIP_W=7.0, CLIP_L=24.0, CLIP_T=1.4, CLIP_PIN_Y=[4.0, 20.0],
+    ASM_OFFSET=(110.0, 0.0, 0.0),
+    PARTS_OFFSET=(170.0, 0.0, 0.0),
 )
+
+# packing in the closed capsule: part, (rot about X deg, rot about Z deg, dx, dy, dz) applied to the
+# part's local frame; found and verified (no clash with the real shell) by ../verify_rhino_math.py
+PACK = [("R", (90, 0, -7.066, -2.065, 19.024)),
+        ("L", (-90, 0, 7.066, 2.935, 26.296)),
+        ("C", (90, 0, -3.500, 7.465, 10.810)),
+        ("C", (90, 180, 3.500, -7.465, 10.810))]
 
 EPS = 0.05   # overlap used so that booleans never meet coplanar / tangent faces
 
@@ -273,6 +307,218 @@ def check_chain(segs, closed=False, tol=1e-6):
     return True
 
 
+# ---------------- princess butterfly maths ----------------
+def bspline_closed(ctrl, n):
+    """uniform periodic cubic B-spline (same curve as Rhino NurbsCurve.Create(True, 3, ctrl))"""
+    m = len(ctrl)
+    out = []
+    for i in range(m):
+        p0, p1, p2, p3 = ctrl[i - 1], ctrl[i], ctrl[(i + 1) % m], ctrl[(i + 2) % m]
+        for k in range(n):
+            t = k / n
+            b0 = (1 - t) ** 3 / 6
+            b1 = (3 * t ** 3 - 6 * t ** 2 + 4) / 6
+            b2 = (-3 * t ** 3 + 3 * t ** 2 + 3 * t + 1) / 6
+            b3 = t ** 3 / 6
+            out.append((b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0],
+                        b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1]))
+    return out
+
+
+def mirror_pts(pts, side):
+    return [(side * p[0], p[1]) for p in pts]
+
+
+def wing_ctrl(side, B=BF):
+    c = mirror_pts(B['CTRL'], side)
+    return c if side > 0 else c[::-1]
+
+
+def wing_outline_pts(side, B=BF):
+    return bspline_closed(wing_ctrl(side, B), B['SAMPLES'])
+
+
+def _area(pts):
+    return 0.5 * sum(pts[i - 1][0] * pts[i][1] - pts[i][0] * pts[i - 1][1] for i in range(len(pts)))
+
+
+def offset_closed(pts, d):
+    """offset a closed polyline inward by d (d > 0)"""
+    ccw = _area(pts) > 0
+    out = []
+    n = len(pts)
+    for i in range(n):
+        a, b = pts[i - 1], pts[(i + 1) % n]
+        tx, ty = _unit((b[0] - a[0], b[1] - a[1]))
+        nx, ny = (-ty, tx) if ccw else (ty, -tx)        # inward normal
+        out.append((pts[i][0] + nx * d, pts[i][1] + ny * d))
+    return out
+
+
+def border_pts(side, B=BF):
+    """inner border bead path(s): offset outline, only where |x| > BORDER_XMIN (clear of the overlap)"""
+    off = offset_closed(wing_outline_pts(side, B), B['BORDER_OFF'])
+    keep = [side * p[0] > B['BORDER_XMIN'] for p in off]
+    n = len(off)
+    start = next(i for i in range(n) if not keep[i])
+    runs, cur = [], []
+    for k in range(1, n + 1):
+        i = (start + k) % n
+        if keep[i]:
+            cur.append(off[i])
+        elif cur:
+            runs.append(cur)
+            cur = []
+    if cur:
+        runs.append(cur)
+    return [r[::3] + ([r[-1]] if (len(r) - 1) % 3 else []) for r in runs if len(r) > 6]
+
+
+def vein_pts(side, B=BF):
+    return [mirror_pts(v, side) for v in B['VEINS']]
+
+
+def pearl_pts(side, B=BF):
+    return [(side * x, y, r) for (x, y, r) in B['PEARLS']]
+
+
+def boss_pos(side, B=BF):
+    return mirror_pts(B['BOSS_POS'], side)
+
+
+def medallion_c(side, B=BF):
+    """right wing medallion sits at -MED_X (over the left wing), left wing medallion at +MED_X"""
+    return (-side * B['MED_X'], 0.0)
+
+
+def heart_pts(B=BF, n=48):
+    """closed heart outline on the left medallion"""
+    cx, cy = medallion_c(-1, B)
+    s = B['HEART_W'] / 32.0
+    pts = []
+    for i in range(n):
+        t = 2 * math.pi * (i + 0.5) / n
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        pts.append((cx + x * s, cy + (y + 2.5) * s))
+    return pts
+
+
+def _deg(mm, B=BF):
+    return math.degrees(mm / B['MED_R'])
+
+
+def hook_spans(B=BF):
+    """(a0, a1) angle ranges of the hooks, and of the keys, around the right medallion centre"""
+    hs, kg, ks = _deg(B['HOOK_SPAN']) / 2, _deg(B['KEY_GAP']), _deg(B['KEY_SPAN'])
+    hooks, keys = [], []
+    for a in B['HOOK_ANG']:
+        hooks.append((a - hs, a + hs))
+        if a < 180:   # key on the side towards 180 deg
+            keys.append((a + hs + kg, a + hs + kg + ks))
+        else:
+            keys.append((a - hs - kg - ks, a - hs - kg))
+    return hooks, keys
+
+
+def slot_spans(B=BF):
+    hooks, keys = hook_spans(B)
+    c = _deg(B['SLOT_CLR'])
+    return [(min(h[0], k[0]) - c, max(h[1], k[1]) + c) for h, k in zip(hooks, keys)]
+
+
+def hook_profile(B=BF):
+    """closed (r, z) section of a hook, right-wing local z (underside z = 0, plate 0..T)."""
+    R, t = B['MED_R'], B['T']
+    zc = -(t + B['LIP_CLR'])                     # catch level (under the left wing)
+    rin = R - B['HOOK_T']
+    top = B['RELIEF_D'] + EPS                     # web root inside the plate (above the relief)
+    # web is 0.1 inside the medallion edge where it merges with the plate (no coincident
+    # cylinder faces in the boolean), then steps out flush with the edge below the underside
+    pts = [(rin, top), (R - 0.1, top), (R - 0.1, 0.05), (R, -0.05), (R, zc), (R + B['LIP'], zc - B['LIP']),
+           (R + B['LIP'], zc - B['LIP'] - 0.1), (rin, zc - B['LIP'] - 0.1 - B['LEAD_H'] - B['LIP'])]
+    return [('L', pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
+
+
+def rect_profile(r0, r1, z0, z1):
+    pts = [(r0, z0), (r1, z0), (r1, z1), (r0, z1)]
+    return [('L', pts[i], pts[(i + 1) % 4]) for i in range(4)]
+
+
+def point_in_poly(p, poly):
+    x, y = p
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i - 1]
+        x2, y2 = poly[i]
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+def dist_to_poly(p, poly):
+    best = 1e9
+    for i in range(len(poly)):
+        a, b = poly[i - 1], poly[i]
+        vx, vy = b[0] - a[0], b[1] - a[1]
+        L2 = vx * vx + vy * vy
+        u = max(0.0, min(1.0, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2)) if L2 else 0.0
+        best = min(best, math.hypot(p[0] - a[0] - u * vx, p[1] - a[1] - u * vy))
+    return best
+
+
+def check_princess(B=BF):
+    """layout sanity checks (pure python). Returns dict name -> (ok, detail)."""
+    res = {}
+    R, L = wing_outline_pts(+1, B), wing_outline_pts(-1, B)
+    mc = medallion_c(+1, B)
+
+    def inner(poly, p, m):
+        return point_in_poly(p, poly) and dist_to_poly(p, poly) >= m
+
+    def arc(c, r, a0, a1, n=12):
+        return [(c[0] + r * math.cos(math.radians(a0 + (a1 - a0) * i / n)),
+                 c[1] + r * math.sin(math.radians(a0 + (a1 - a0) * i / n))) for i in range(n + 1)]
+    # bosses well inside both wings
+    m = min(dist_to_poly(p, R) for p in boss_pos(+1, B))
+    res['boss margin'] = (m >= B['BOSS_D'] / 2 + 1.0, round(m, 2))
+    # slots fully inside the left wing with >= 0.8 mm material around
+    pts = []
+    for (a0, a1) in slot_spans(B):
+        for r in (B['MED_R'] - B['SLOT_IN'], B['MED_R'] + B['SLOT_OUT']):
+            pts += arc(mc, r, a0, a1)
+    m = min(dist_to_poly(p, L) if point_in_poly(p, L) else -1 for p in pts)
+    res['slot inside left wing'] = (m >= 0.8, round(m, 2))
+    # hook lips must have nothing of the right wing above them (straight pull)
+    hooks, keys = hook_spans(B)
+    lip = []
+    for (a0, a1) in hooks:
+        lip += arc(mc, B['MED_R'] + B['LIP'] + 0.3, a0, a1)
+    bad = [p for p in lip if point_in_poly(p, R)]
+    res['lips clear of right wing'] = (not bad, len(bad))
+    # raised decoration of the left wing must be outside the right wing footprint (+0.5)
+    def in_right_fp(p, mg):
+        return (point_in_poly(p, R) or dist_to_poly(p, R) < mg or
+                math.hypot(p[0] - mc[0], p[1] - mc[1]) < B['MED_R'] + mg)
+    deco = [q for v in vein_pts(-1, B) for q in v] + [(x, y) for (x, y, r) in pearl_pts(-1, B)]
+    deco += [q for b in border_pts(-1, B) for q in b]
+    bad = [p for p in deco if in_right_fp(p, 0.6)]
+    res['left deco clear of right wing'] = (not bad, len(bad))
+    # decoration inside the outline
+    deco_r = [q for v in vein_pts(+1, B) for q in v] + [(x, y) for (x, y, r) in pearl_pts(+1, B)]
+    m = min(dist_to_poly(p, R) if point_in_poly(p, R) else -1 for p in deco_r)
+    res['deco inside outline'] = (m >= 1.2, round(m, 2))
+    # wing size (packing)
+    xs, ys = [p[0] for p in R], [p[1] for p in R]
+    res['wing size'] = (True, (round(max(xs) - min(min(xs), mc[0] - B['MED_R']), 2), round(max(ys) - min(ys), 2)))
+    # hook snap strain  (cantilever: eps = 1.5 t d / L^2)
+    Lh = B['RELIEF_D'] + B['T'] + B['LIP_CLR'] + B['LIP']
+    eps = 1.5 * B['HOOK_T'] * (B['LIP'] - B['SLOT_OUT']) / Lh ** 2
+    res['hook strain'] = (eps <= 0.025, "%.1f %%" % (eps * 100))
+    return res
+
+
 # =====================================================================================
 # RHINO BUILD
 # =====================================================================================
@@ -386,7 +632,10 @@ if RHINO:
 
     def extrude_closed(segs, plane, vec, what):
         crvs = seg_curves(segs, plane)
-        joined = rg.Curve.JoinCurves(crvs, TOL)
+        cl = List[rg.Curve]()
+        for c in crvs:
+            cl.Add(c)
+        joined = rg.Curve.JoinCurves(cl, TOL)
         crv = joined[0]
         if not crv.IsClosed:
             log("  !! %s outline not closed" % what)
@@ -478,86 +727,109 @@ if RHINO:
         # closed: cap sits on the lip and the snap rib bites into the groove -> keep 2 solids
         return [("base+hinge", union([base, strap], "base + hinge")), ("cap", cap_t)]
 
-    # ---------- butterfly ----------
-    def full_body():
-        B = BF
-        r = B['BODY_W'] / 2
-        y0, y1 = B['BODY_Y0'] + r, B['BODY_Y1'] - r
-        segs = [('L', (r, y0), (r, y1)), ('A', (r, y1), (0.0, y1 + r), (-r, y1)),
-                ('L', (-r, y1), (-r, y0)), ('A', (-r, y0), (0.0, y0 - r), (r, y0))]
-        b = extrude_closed(segs, "XY", rg.Vector3d(0, 0, B['BODY_H']), "body")
-        b = fillet_edges(b, edge_at_z(B['BODY_H']), B['BODY_TOP_FILLET'], "body top")
-        b = fillet_edges(b, edge_at_z(0.0), B['BODY_BOT_FILLET'], "body bottom")
-        cut = [box(-r - 1, r + 1, y - 0.3, y + 0.3, B['BODY_H'] - 0.5, B['BODY_H'] + 1) for y in B['GROOVES_Y']]
-        cut += [cyl(x, y, B['BODY_H'] - 0.6, 0.8, 2.0) for (x, y) in B['EYES']]
-        return diff(b, cut, "body decor")
+    # ---------- princess butterfly ----------
+    def pts3(pts2d, z):
+        l = List[rg.Point3d]()
+        for (x, y) in pts2d:
+            l.Add(rg.Point3d(x, y, z))
+        return l
 
-    def wing_half(side):
-        """plate + spots + antenna + clip bosses (built for the right side, mirrored if side < 0)"""
+    def interp(pts2d, z, closed=False):
+        if closed:
+            return rg.Curve.CreateInterpolatedCurve(pts3(pts2d, z), 3, rg.CurveKnotStyle.ChordPeriodic)
+        return rg.Curve.CreateInterpolatedCurve(pts3(pts2d, z), 3)
+
+    def pipe(crv, r, what):
+        res = rg.Brep.CreatePipe(crv, r, False, rg.PipeCapMode.Round, True, TOL, ATOL)
+        if res is None or len(res) == 0:
+            log("  !! pipe %s failed" % what)
+            return None
+        return solidify(res[0], what)
+
+    def revolve_about(segs, center, a0, a1, what):
+        """revolve a closed (r, z) profile around the vertical axis through center, from a0 to a1 deg"""
+        cx, cy = center
+        axis = rg.Line(rg.Point3d(cx, cy, -100), rg.Point3d(cx, cy, 100))
+        faces = []
+        for c in seg_curves(segs, "XZ"):
+            c.Translate(rg.Vector3d(cx, cy, 0))
+            rs = rg.RevSurface.Create(c, axis, math.radians(a0), math.radians(a1))
+            faces.append(rg.Brep.CreateFromRevSurface(rs, False, False))
+        j = rg.Brep.JoinBreps(blist(faces), TOL)
+        if j is None or len(j) == 0:
+            log("  !! revolve %s failed" % what)
+            return None
+        b = j[0]
+        if not b.IsSolid:
+            b = b.CapPlanarHoles(TOL)
+        return solidify(b, what)
+
+    def disc(c, r, z0, h, fillet, what):
+        d = cyl(c[0], c[1], z0, r, h)
+        return fillet_edges(d, edge_at_z(z0 + h), fillet, what) if fillet > 0 else d
+
+    def wing(side):
+        """side +1: right wing (top, jewel + 2 S-hooks), -1: left wing (bottom, heart + 2 slots).
+        Local frame: plate z 0..T, underside z = 0."""
         B = BF
-        pts = List[rg.Point3d]()
-        for (x, y) in B['WING_PTS']:
-            pts.Add(rg.Point3d(x, y, B['PLATE_Z0']))
-        outline = rg.Curve.CreateInterpolatedCurve(pts, 3, rg.CurveKnotStyle.ChordPeriodic)
-        ztop = B['PLATE_Z0'] + B['PLATE_T']
-        plate = extrude_curve(outline, B['PLATE_Z0'], B['PLATE_T'], "wing plate")
-        plate = fillet_edges(plate, edge_at_z(ztop), B['PLATE_FILLET'], "wing plate top edge")
-        adds = [plate]
-        for (c, r) in B['SPOTS']:
-            adds.append(cyl(c[0], c[1], ztop - EPS, r, B['SPOT_H'] + EPS))
-        rail_pts = List[rg.Point3d]()
-        for (x, y) in B['ANT_PTS']:
-            rail_pts.Add(rg.Point3d(x, y, B['ANT_Z']))
-        rail = rg.Curve.CreateInterpolatedCurve(rail_pts, 3)
-        pipe = rg.Brep.CreatePipe(rail, B['ANT_R'], False, rg.PipeCapMode.Round, True, TOL, ATOL)
-        if pipe is not None and len(pipe):
-            adds.append(solidify(pipe[0], "antenna"))
-        else:
-            log("  !! antenna pipe failed")
-        ex, ey = B['ANT_PTS'][-1]
-        adds.append(rg.Sphere(rg.Point3d(ex, ey, B['ANT_Z']), B['ANT_BALL']).ToBrep())
-        bh = B['PLATE_Z0'] - B['BOSS_Z0'] + 0.2
+        t = B['T']
+        mc = medallion_c(side)
+        log("Butterfly: %s wing" % ("right" if side > 0 else "left"))
+        outline = rg.NurbsCurve.Create(True, 3, pts3(wing_ctrl(side), 0.0))
+        plate = extrude_curve(outline, 0.0, t, "wing plate")
+        plate = fillet_edges(plate, edge_at_z(t), B['EDGE_FILLET'], "wing plate top edge")
+        adds = [plate, disc(mc, B['MED_R'], 0.0, t, B['EDGE_FILLET'], "medallion top edge")]
+        zd = t + B['DECO_Z']
+        for pts in border_pts(side):
+            adds.append(pipe(interp(pts, zd), B['BORDER_R'], "border bead"))
+        for v in vein_pts(side):
+            adds.append(pipe(interp(v, zd), B['VEIN_R'], "vein"))
+        for (x, y, r) in pearl_pts(side):
+            adds.append(rg.Sphere(rg.Point3d(x, y, t - 0.12), r).ToBrep())
+        bh = B['BOSS_H'] + 0.2
         r_top = B['BOSS_D'] / 2
         r_bot = r_top - bh * math.tan(math.radians(B['BOSS_DRAFT']))
-        for (x, y) in B['BOSS_POS']:
-            adds.append(revolve(pin_profile(r_bot, r_top, bh), "boss", (x, y, B['BOSS_Z0'])))
-        part = union(adds, "wing plate features")
-        cuts = [cyl(c[0], c[1], ztop + B['SPOT_H'] - 0.2, r * 0.45, 1.0) for (c, r) in B['SPOTS']]
-        cuts += [revolve(hole_profile(B['CLIP_HOLE_D'] / 2, B['CLIP_HOLE_DEPTH']), "clip hole",
-                         (x, y, B['BOSS_Z0'])) for (x, y) in B['BOSS_POS']]
-        part = diff(part, cuts, "spot rings / clip holes")
-        if side < 0:
-            part = xf(part, MIRROR_X)
-        return part
-
-    def wing_R(body):
-        B = BF
-        log("Butterfly: P1 wing R")
-        p = diff(body, [box(-10, 0, -30, 30, B['LAP_Z'], 10)], "lap split R")
-        p = union([p, wing_half(+1)], "wing R")
-        pins = [revolve(pin_profile(B['JOIN_PIN_D'] / 2,
-                                    B['JOIN_PIN_D'] / 2 - B['JOIN_PIN_H'] * math.tan(math.radians(0.5)),
-                                    B['JOIN_PIN_H'] + 0.1, 0.3), "join pin", (x, y, B['LAP_Z'] - 0.1))
-                for (x, y) in B['JOIN_PIN_POS']]
-        p = union([p] + pins, "join pins")
-        # core out the thick body from below
-        p = diff(p, [box(0.8, 2.6, -9.5, 7.5, -1, 3.4)], "body coring")
-        return p
-
-    def wing_L(body):
-        B = BF
-        log("Butterfly: P2 wing L")
-        p = union([body, wing_half(-1)], "wing L")
-        bw = B['BODY_W'] / 2 + 0.5        # lap cutter limited to the body footprint (keeps the clip bosses)
-        p = diff(p, [box(0, 10, -30, 30, -1, 10),
-                     box(-bw, 0.1, B['BODY_Y0'] - 1, B['BODY_Y1'] + 1, -1, B['LAP_Z'])], "lap split L")
-        holes = [revolve(hole_profile(B['JOIN_HOLE_D'] / 2, B['JOIN_HOLE_DEPTH']), "join hole",
-                         (x, y, B['LAP_Z'])) for (x, y) in B['JOIN_PIN_POS']]
-        return diff(p, holes, "join holes")
+        for (x, y) in boss_pos(side):
+            adds.append(revolve(pin_profile(r_bot, r_top, bh), "clip boss", (x, y, -B['BOSS_H'])))
+        cuts = [revolve(hole_profile(B['CLIP_HOLE_D'] / 2, B['CLIP_HOLE_DEPTH']), "clip hole",
+                        (x, y, -B['BOSS_H'])) for (x, y) in boss_pos(side)]
+        if side > 0:
+            # jewel: cabochon (sphere cap) + bezel + bead ring
+            rs = (B['GEM_R'] ** 2 + B['GEM_H'] ** 2) / (2 * B['GEM_H'])
+            sph = rg.Sphere(rg.Point3d(mc[0], mc[1], t + B['GEM_H'] - rs), rs).ToBrep()
+            gem = inter(sph, box(mc[0] - 10, mc[0] + 10, -10, 10, t - EPS, t + 5), "gem cap")
+            adds.append(gem)
+            ring = rg.Circle(rg.Plane(rg.Point3d(mc[0], mc[1], zd), rg.Vector3d.ZAxis), B['BEZEL_R'])
+            adds.append(pipe(rg.ArcCurve(ring), B['BEZEL_PIPE'], "bezel"))
+            for i in range(B['BEAD_N']):
+                a = 2 * math.pi * (i + 0.5) / B['BEAD_N']
+                adds.append(rg.Sphere(rg.Point3d(mc[0] + B['BEAD_RING'] * math.cos(a),
+                                                 mc[1] + B['BEAD_RING'] * math.sin(a), t - 0.05),
+                                      B['BEAD_R']).ToBrep())
+            # S-hooks + keys (under the medallion edge), relief grooves inside the hooks
+            hooks, keys = hook_spans()
+            R = B['MED_R']
+            for (a0, a1) in hooks:
+                adds.append(revolve_about(hook_profile(), mc, a0, a1, "S-hook"))
+                cuts.append(revolve_about(rect_profile(R - B['HOOK_T'] - B['RELIEF_W'], R - B['HOOK_T'],
+                                                       -0.5, B['RELIEF_D']), mc, a0 - 1.0, a1 + 1.0, "relief"))
+            for (a0, a1) in keys:
+                adds.append(revolve_about(rect_profile(R - B['SLOT_IN'] + 0.03, R - B['SLOT_IN'] + 0.63,
+                                                       -t, 0.3), mc, a0, a1, "key"))
+        else:
+            # recessed heart on the medallion + the 2 arc slots for the hooks
+            heart = interp(heart_pts(), t - B['HEART_D'], closed=True)
+            cuts.append(extrude_curve(heart, t - B['HEART_D'], B['HEART_D'] + 1.0, "heart"))
+            R = B['MED_R']
+            for (a0, a1) in slot_spans():
+                cuts.append(revolve_about(rect_profile(R - B['SLOT_IN'], R + B['SLOT_OUT'], -1.0, t + 1.0),
+                                          medallion_c(+1), a0, a1, "hook slot"))
+        part = union(adds, "wing + decoration")
+        return diff(part, [c for c in cuts if c is not None], "wing cuts")
 
     def clip_part():
         B = BF
-        log("Butterfly: P3 clip")
+        log("Butterfly: clip")
         c = extrude_closed(clip_outline(), "YZ", rg.Vector3d(B['CLIP_W'], 0, 0), "clip profile")
         pins = [revolve(pin_profile(B['CLIP_PIN_D'] / 2, B['CLIP_PIN_D'] / 2, B['CLIP_PIN_H'] + 0.1, 0.35),
                         "clip pin", (B['CLIP_W'] / 2, y, -0.1)) for y in B['CLIP_PIN_Y']]
@@ -565,34 +837,17 @@ if RHINO:
 
     def clip_on_wing(c, side):
         B = BF
-        x, y = B['BOSS_POS'][0]
-        t = rg.Transform.Translation(x - B['CLIP_W'] / 2, y - B['CLIP_PIN_Y'][0], B['BOSS_Z0'])
-        p = xf(c, t)
-        return xf(p, MIRROR_X) if side < 0 else p
+        x, y = boss_pos(side)[0]
+        return xf(c, rg.Transform.Translation(x - B['CLIP_W'] / 2, y - B['CLIP_PIN_Y'][0], -B['BOSS_H']))
 
     def pack_in_egg(parts):
-        """wings back to back in the middle, clips on both sides; all along the egg axis"""
-        E = EGG
-        zc = (E['T'] + E['L_TOTAL'] - E['T']) / 2
-        r90 = rg.Transform.Rotation(math.pi / 2, rg.Vector3d.XAxis, rg.Point3d.Origin)
-
-        def centred(b, rot_z180=False):
-            c = xf(b, r90)
-            if rot_z180:
-                c = xf(c, rg.Transform.Rotation(math.pi, rg.Vector3d.ZAxis, rg.Point3d.Origin))
-            bb = c.GetBoundingBox(True)
-            m = bb.Center
-            c.Transform(rg.Transform.Translation(-m.X, -m.Y, -m.Z))
-            return c, bb.Max.Y - bb.Min.Y
-        gap = 0.3
-        wr, tr = centred(parts['P1'])
-        wl, tl = centred(parts['P2'])
-        c1, tc = centred(parts['P3'])
-        c2, _ = centred(parts['P3'], True)
+        """packing inside the closed capsule (positions verified in verify_rhino_math.py)"""
         out = []
-        for b, dy in ((wr, -(tr / 2 + gap / 2)), (wl, tl / 2 + gap / 2),
-                      (c1, tl + gap + tc / 2 + gap), (c2, -(tr + gap + tc / 2 + gap))):
-            out.append(xf(b, rg.Transform.Translation(0, dy, zc)))
+        for key, tr in PACK:
+            b = xf(parts[key], rg.Transform.Rotation(math.radians(tr[0]), rg.Vector3d.XAxis, rg.Point3d.Origin))
+            b.Transform(rg.Transform.Rotation(math.radians(tr[1]), rg.Vector3d.ZAxis, rg.Point3d.Origin))
+            b.Transform(rg.Transform.Translation(tr[2], tr[3], tr[4]))
+            out.append(b)
         return out
 
     # ---------- document ----------
@@ -662,23 +917,23 @@ if RHINO:
                     add(sect, layer("Egg_Closed_Section", (255, 200, 120)), "Egg_Closed_Section_" + sub,
                         (0, -E['STATE_DY'], 0))
 
-        body = full_body()
-        parts = {'P1': wing_R(body), 'P2': wing_L(body), 'P3': clip_part()}
+        parts = {'R': wing(+1), 'L': wing(-1), 'C': clip_part()}
+        T = B['T']
+        ax, ay, az = B['ASM_OFFSET']
         la = layer("Butterfly_Assembly", (245, 120, 180))
-        add(parts['P1'], la, "P1_wing_R", B['ASM_OFFSET'])
-        add(parts['P2'], la, "P2_wing_L", B['ASM_OFFSET'])
-        add(clip_on_wing(parts['P3'], +1), la, "P3_clip_R", B['ASM_OFFSET'])
-        add(clip_on_wing(parts['P3'], -1), la, "P3_clip_L", B['ASM_OFFSET'])
+        add(parts['L'], la, "wing_L (bottom)", (ax, ay, az))
+        add(parts['R'], la, "wing_R (top)", (ax, ay, az + T))
+        add(clip_on_wing(parts['C'], -1), la, "clip_L", (ax, ay, az))
+        add(clip_on_wing(parts['C'], +1), la, "clip_R", (ax, ay, az + T))
         lp = layer("Butterfly_Parts", (120, 160, 245))
         ox, oy, oz = B['PARTS_OFFSET']
-        add(parts['P1'], lp, "P1_wing_R", (ox, oy, oz), dict(material="ABS"))
-        add(parts['P2'], lp, "P2_wing_L", (ox + 30, oy, oz), dict(material="ABS"))
-        add(parts['P3'], lp, "P3_clip (x2)", (ox + 55, oy - 12, oz), dict(material="ABS", qty=2))
+        add(parts['R'], lp, "P1_wing_R", (ox, oy, oz), dict(material="ABS + UV colour-change coating"))
+        add(parts['L'], lp, "P2_wing_L", (ox + 50, oy, oz), dict(material="ABS + UV colour-change coating"))
+        add(parts['C'], lp, "P3_clip (x2)", (ox + 75, oy - 12, oz), dict(material="ABS", qty=2))
         lk = layer("Packed_In_Egg", (240, 80, 150))
-        names = ["P1_wing_R", "P2_wing_L", "P3_clip_1", "P3_clip_2"]
-        for nm, b in zip(names, pack_in_egg(parts)):
-            add(b, lk, "packed_" + nm)
-            add(b, lk, "packed_" + nm + "_section", (0, -E['STATE_DY'], 0))
+        for (key, _), b in zip(PACK, pack_in_egg(parts)):
+            add(b, lk, "packed_" + key)
+            add(b, lk, "packed_" + key + "_section", (0, -E['STATE_DY'], 0))
         if DEBUG:
             ld = layer("_Debug", (255, 0, 0))
             for b in DEBUG:
