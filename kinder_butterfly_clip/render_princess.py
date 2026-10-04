@@ -34,7 +34,7 @@ def top2d(ax, items, title, below=False):
 fig = plt.figure(figsize=(18, 11))
 top2d(fig.add_subplot(231), items, "Assembled - top view")
 draw(fig.add_subplot(232, projection="3d"), items, 30, -62, "Assembled - 3/4 view")
-top2d(fig.add_subplot(233), items, "Underside (mirrored): small hook on the bar, 2 hair clips", below=True)
+top2d(fig.add_subplot(233), items, "Underside (mirrored): hook on the bar + 2 ears, 2 hair clips", below=True)
 ins = [(mv("wing_L", (0, 0, 0)), LIL, 1), (mv("clip_L", (0, 0, 0)), WHITE, 1),
        (mv("wing_R", (9, 0, 0)), ROSE, 1), (mv("clip_R", (9, 0, 0)), WHITE, 1)]
 draw(fig.add_subplot(234, projection="3d"), ins, 38, -55, "Assembly: push the right wing's bar sideways into the hook")

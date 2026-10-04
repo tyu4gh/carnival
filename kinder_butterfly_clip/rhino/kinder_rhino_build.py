@@ -9,13 +9,15 @@ How to run (Rhino 7 / 8 / 9 WIP, Windows or Mac):
 Everything is parametric: edit EGG / BF below and run again.
 Objects created by a previous run (layer tree "KinderToy") are deleted first.
 
-Toy v5 (4 parts, injection moulded ABS, no metal, no surface patterns). Wing shape from the
-user's model buttclip_Ver.1.1.3dm; both wings are thin organic sections (thinner, slightly
-drooping towards the tips); the overlap at the centre is only ~2 mm:
-    P1 right wing  - one continuous gentle arc that dips towards the centre, thins out to 0.8 mm
-                     and ends in a small round bar (D 1.4)
+Toy v6 (4 parts, injection moulded ABS, no metal, no surface patterns). Wing shape from the
+user's model buttclip_Ver.1.1.3dm; both wings share one organic section: 0.9 mm at the centre,
+growing to 1.5 mm outside, slightly drooping at the tips; 3 mm overlap at the centre:
+    P1 right wing  - one continuous arc that dips under the left wing, thins to 0.8 mm and ends in a
+                     round bar (D 1.4); two small ears at the bar ends reach under the left wing
     P2 left wing   - its root edge curls down into a small hook ("LEGO hand") that holds the bar
                      (hook bore along Y: one side core in the left-wing tool, like a LEGO hand)
+    Anti-wobble: rocking up is stopped by the left wing's root (gap 0.04), rocking down by the
+    ears (gap 0.08), sliding along the bar by the ears against the hook ends
     P3 clip x2     - identical one-piece ABS spring clip, press-fits under either wing
 
 Output layers (parent "KinderToy"):
@@ -99,32 +101,40 @@ BF = dict(
               (24.83, 8.23), (25.15, 11.63), (23.85, 14.73), (20.6, 15.42), (17.27, 14.65),
               (14.06, 13.45), (11.02, 11.87), (8.21, 9.91), (5.62, 7.68), (3.21, 5.23), (1.13, 2.52)],
     SAMPLES=6,                   # Catmull-Rom samples per span (dense outline used everywhere)
-    OVERLAP=5.0,                 # each wing slides OVERLAP/2 towards the centre
-    # ---- organic sections (both wings)
-    T=1.4,                       # body thickness
-    T_TIP=1.0,                   # thickness at the outer tips
+    OVERLAP=6.0,                 # each wing slides OVERLAP/2 towards the centre
+    # ---- organic sections, the same for both wings: thin at the centre, a little thicker outside
+    T_IN=0.9,                    # thickness at the centre
+    T_MAX=1.5,                   # thickest (outer part of the wings) - not more than 1.5
+    A_IN=2.0, A_MAX=13.0,        # thickness grows smoothly between these distances from the centre
     DROOP=0.4,                   # the outer part of each wing curves down by this much
-    DROOP_FROM=14.0,             # |x| where thinning / drooping towards the tip starts
+    DROOP_FROM=12.0,             # |x| where the droop starts
     TIP_X=23.0,                  # |x| where it ends
-    RIM_R=0.35,                  # rounded rim (limited by the thin end of the right wing)
-    # ---- right wing arc: from the bar up to full height
+    RIM_R=0.35,                  # rounded rim (limited by the thin centre)
+    # ---- right wing arc: from the bar into the common outer section (C1)
     T_END=0.8,                   # thickness where it meets the bar
-    ARC_LEN=11.0,                # length of the rising arc (cubic Hermite, flat at its top)
-    ARC_SLOPE=0.22,              # slope at the bar (about 12 deg)
+    ARC_LEN=9.0,                 # length of the arc from the bar axis
+    ARC_SLOPE=0.15,              # slope at the bar (the arc stays under the left wing's root)
     # ---- bar on the right wing's root edge
-    ROD_LEN=7.0,                 # straight, round-section part of the root edge
+    ROD_LEN=8.0,                 # straight, round-section part of the root edge
     ROD_R=0.7,                   # bar radius (diameter 1.4)
     ROD_IN=0.15,                 # bar sticks out this much past the plate end
     BAR_GAP=0.1,                 # bar top below the left wing's underside
     SOFT_K=1.2,                  # smoothing of the corners where a straight root edge meets the curve
     # ---- left wing hand (C-hook at the root edge, constant section along Y, rounded ends)
-    JAW_COVER=1.15,              # left wing's straight root edge is this far right of the bar axis
+    CENTER_OVERLAP=3.0,          # plan overlap at the centre: bar's far side -> left wing root edge
     GRIP=0.02,                   # bore radius = ROD_R - GRIP (light friction grip)
     HAND_WALL=0.5,               # hook wall
     LIP_ANG=50.0,                # lip tip angle below horizontal (sets the snap: see check)
     HAND_BLEND=0.8,              # concave blend radius between the hook and the wing underside
-    HAND_END_CLR=0.5,            # hand is this much shorter than the bar at each end
+    HAND_END_CLR=1.0,            # hand is this much shorter than the bar at each end (room for the ears)
     HAND_END_R=1.2,              # rounded ends of the hand in plan view
+    # ---- anti-wobble ears: two small tabs at the bar ends, pointing under the left wing
+    EAR_LEN=2.0,                 # reach to the left of the bar axis
+    EAR_W=0.7,                   # width along the bar
+    EAR_T=0.6,                   # thickness
+    EAR_GAP=0.08,                # gap ear top <-> left wing underside (stops rocking down)
+    EAR_END_CLR=0.15,            # gap ear <-> hook end (stops sliding along the bar)
+    UP_GAP=0.08,                 # target gap right wing top <-> left wing root (stops rocking up)
     # ---- clip interface (same one-piece ABS clip)
     BOSS_D=5.0, BOSS_H=1.5, BOSS_DRAFT=1.0,
     CLIP_PIN_D=2.25, CLIP_HOLE_D=2.20, CLIP_PIN_H=2.1, CLIP_HOLE_DEPTH=2.3,
@@ -137,10 +147,10 @@ BF = dict(
 # packing in the closed capsule: part, (rot about X deg, rot about Z deg, dx, dy, dz) applied to
 # the part's assembled-frame geometry; found and verified (no clash with the real shell) by
 # ../verify_princess.py
-PACK = [("R", (90, 0, -10.835, -1.940, 22.689)),
-        ("L", (90, 0, 11.065, 1.360, 22.689)),
-        ("C", (90, 0, -3.500, 5.840, 11.810)),
-        ("C", (90, 180, 3.500, -5.840, 11.810))]
+PACK = [("R", (-90, 0, -9.849, -1.939, 22.631)),
+        ("L", (-90, 0, 10.217, 1.940, 22.631)),
+        ("C", (90, 0, -3.500, 5.939, 11.810)),
+        ("C", (90, 180, 3.500, -5.939, 11.810))]
 
 EPS = 0.05   # overlap used so that booleans never meet coplanar / tangent faces
 
@@ -373,7 +383,21 @@ def arc_chain(pts, closed=True):
     return segs
 
 
+_CACHE = {}
+
+
+def _key(B, *names):
+    return tuple(B[n] if not isinstance(B[n], list) else tuple(B[n]) for n in names)
+
+
 def wing_outline_pts(side, B=BF):
+    k = ("outline", side) + _key(B, 'OVERLAP', 'SAMPLES', 'WING_PTS')
+    if k not in _CACHE:
+        _CACHE[k] = _wing_outline_pts(side, B)
+    return _CACHE[k]
+
+
+def _wing_outline_pts(side, B=BF):
     """dense closed outline (CCW) of the user's wing, right (+1) or left (-1), assembled frame"""
     s = B['OVERLAP'] / 2
     pts = [(x - s, y) for (x, y) in cr_closed(B['WING_PTS'], B['SAMPLES'])]
@@ -414,6 +438,13 @@ def _root_span(x_cut, B=BF):
 
 
 def rod_line(B=BF):
+    k = ("rod",) + _key(B, 'OVERLAP', 'SAMPLES', 'WING_PTS', 'ROD_LEN')
+    if k not in _CACHE:
+        _CACHE[k] = _rod_line(B)
+    return _CACHE[k]
+
+
+def _rod_line(B=BF):
     """x of the straight root edge, and (y0, y1) of the bar. The edge is moved right until
     ROD_LEN + 2 mm of it is straight (the bar keeps 1 mm away from the rounded corners)."""
     lo, hi = -10.0, 10.0
@@ -439,21 +470,44 @@ def right_outline_pts(B=BF):
     return out
 
 
-def rod_axis(B=BF):
-    """bar axis: (xc, zc, y0, y1)"""
-    xr, (y0, y1) = rod_line(B)
-    return xr + B['ROD_R'] - B['ROD_IN'], -(B['ROD_R'] + B['BAR_GAP']), y0, y1
+def _left_outline(xl, B):
+    k = B['SOFT_K']
+    return [(0.5 * (x + xl - math.sqrt((x - xl) ** 2 + k * k)), y) for (x, y) in wing_outline_pts(-1, B)]
 
 
 def left_root_x(B=BF):
-    return rod_axis(B)[0] + B['JAW_COVER']
+    """clamp line of the left wing's straight root edge, solved so that the real (smoothed) edge at
+    the middle of the bar gives CENTER_OVERLAP"""
+    k = ("lroot",) + _key(B, 'OVERLAP', 'SAMPLES', 'WING_PTS', 'ROD_LEN', 'ROD_R', 'ROD_IN', 'SOFT_K',
+                         'CENTER_OVERLAP')
+    if k in _CACHE:
+        return _CACHE[k]
+    xc, zc, y0, y1 = rod_axis(B)
+    ym = (y0 + y1) / 2
+    lo, hi = xc, xc + 6.0
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        edge = x_hits(_left_outline(mid, B), ym)[-1]
+        if edge - (xc - B['ROD_R']) < B['CENTER_OVERLAP']:
+            lo = mid
+        else:
+            hi = mid
+    _CACHE[k] = hi
+    return hi
+
+
+def left_edge_x(y, B=BF):
+    """real x of the left wing's root edge at height y"""
+    return x_hits(left_outline_pts(B), y)[-1]
 
 
 def left_outline_pts(B=BF):
-    """left wing outline with a straight root edge at x = left_root_x (smooth min)"""
-    xl = left_root_x(B)
-    k = B['SOFT_K']
-    return [(0.5 * (x + xl - math.sqrt((x - xl) ** 2 + k * k)), y) for (x, y) in wing_outline_pts(-1, B)]
+    """left wing outline with a straight root edge (smooth min with x = left_root_x)"""
+    k = ("lout",) + _key(B, 'OVERLAP', 'SAMPLES', 'WING_PTS', 'ROD_LEN', 'ROD_R', 'ROD_IN', 'SOFT_K',
+                         'CENTER_OVERLAP')
+    if k not in _CACHE:
+        _CACHE[k] = _left_outline(left_root_x(B), B)
+    return _CACHE[k]
 
 
 def _smoother(u):
@@ -461,40 +515,57 @@ def _smoother(u):
     return u * u * u * (u * (6 * u - 15) + 10)
 
 
-def _tip(ax, B=BF):
-    """thinning / drooping factor 0..1 towards the outer tip (ax = |x|)"""
-    return _smoother((ax - B['DROOP_FROM']) / (B['TIP_X'] - B['DROOP_FROM']))
+def wing_t(a, B=BF):
+    """thickness at distance a = |x| from the centre: thin inside, slightly thicker outside"""
+    return B['T_IN'] + (B['T_MAX'] - B['T_IN']) * _smoother((a - B['A_IN']) / (B['A_MAX'] - B['A_IN']))
 
 
-def right_z(x, B=BF):
-    """(z_bottom, z_top) of the right wing at x: arc from the bar up to full height, then the
-    gentle droop / thinning towards the tip"""
-    xc, zc, _, _ = rod_axis(B)
-    zf = B['T'] / 2
-    s0 = B['ARC_SLOPE']
-    L = B['ARC_LEN']
-    u = (x - xc) / L
-    if u <= 0:
-        mid, t = zc + s0 * (x - xc), B['T_END']
-    elif u < 1:
-        h00, h10, h01 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u, -2 * u ** 3 + 3 * u ** 2
-        mid = h00 * zc + h10 * s0 * L + h01 * zf
-        t = B['T_END'] + (B['T'] - B['T_END']) * _smoother(u)
-    else:
-        mid, t = zf, B['T']
-    f = _tip(x, B)
-    mid -= B['DROOP'] * f
-    t -= (B['T'] - B['T_TIP']) * f
-    return mid - t / 2, mid + t / 2
+def wing_bot(a, B=BF):
+    """underside at distance a from the centre: flat, then a gentle droop towards the tip"""
+    return -B['DROOP'] * _smoother((a - B['DROOP_FROM']) / (B['TIP_X'] - B['DROOP_FROM']))
 
 
 def left_z(x, B=BF):
-    """(z_bottom, z_top) of the left wing: flat underside z = 0 near the root, thinning and
-    drooping towards the tip"""
-    f = _tip(-x, B)
-    mid = B['T'] / 2 - B['DROOP'] * f
-    t = B['T'] - (B['T'] - B['T_TIP']) * f
-    return mid - t / 2, mid + t / 2
+    """(z_bottom, z_top) of the left wing (flat underside z = 0 at the root)"""
+    a = max(0.0, -x)
+    b = wing_bot(a, B)
+    return b, b + wing_t(a, B)
+
+
+def rod_axis(B=BF):
+    """bar axis: (xc, zc, y0, y1)"""
+    xr, (y0, y1) = rod_line(B)
+    return xr + B['ROD_R'] - B['ROD_IN'], -(B['ROD_R'] + B['BAR_GAP']), y0, y1
+
+
+def right_z(x, B=BF):
+    """(z_bottom, z_top) of the right wing: from the bar (mid zc, thickness T_END, slope ARC_SLOPE)
+    one cubic Hermite arc (mid-surface and thickness) joins the common outer section at
+    x = xc + ARC_LEN with matching value and slope (C1); outside, same section as the left wing"""
+    xc, zc, _, _ = rod_axis(B)
+    L = B['ARC_LEN']
+    xf = xc + L
+
+    def outer(xx):
+        b = wing_bot(xx, B)
+        t = wing_t(xx, B)
+        return b + t / 2, t
+    if x >= xf:
+        m, t = outer(x)
+        return m - t / 2, m + t / 2
+    h = 1e-4
+    mf, tf = outer(xf)
+    dm = (outer(xf + h)[0] - outer(xf - h)[0]) / (2 * h)
+    dt = (outer(xf + h)[1] - outer(xf - h)[1]) / (2 * h)
+    u = (x - xc) / L
+    if u <= 0:
+        m, t = zc + B['ARC_SLOPE'] * (x - xc), B['T_END']
+    else:
+        h00, h10, h01, h11 = (2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u,
+                              -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2)
+        m = h00 * zc + h10 * B['ARC_SLOPE'] * L + h01 * mf + h11 * dm * L
+        t = h00 * B['T_END'] + h01 * tf + h11 * dt * L
+    return m - t / 2, m + t / 2
 
 
 def section_pts(fz, x_from=-40.0, x_to=40.0, step=0.5):
@@ -556,6 +627,29 @@ def hand_plan(B=BF, n=16):
     return pts
 
 
+def ear_rects(B=BF):
+    """(x0, x1, y0, y1, z0, z1) of the two anti-wobble ears on the right wing"""
+    xc, zc, y0, y1 = rod_axis(B)
+    h0, h1 = hand_span(B)
+    z1 = -B['EAR_GAP']
+    out = []
+    for (ya, yb) in ((h0 - B['EAR_END_CLR'] - B['EAR_W'], h0 - B['EAR_END_CLR']),
+                     (h1 + B['EAR_END_CLR'], h1 + B['EAR_END_CLR'] + B['EAR_W'])):
+        out.append((xc - B['EAR_LEN'], xc, ya, yb, z1 - B['EAR_T'], z1))
+    return out
+
+
+def ear_plan(r, n=6):
+    """rounded-rectangle plan of an ear (rounded at the free end)"""
+    x0, x1, y0, y1 = r[:4]
+    rr = (y1 - y0) / 2 * 0.95
+    pts = [(x1 + 0.3, y0), (x1 + 0.3, y1)]
+    for i in range(n + 1):
+        a = math.radians(90 + 180.0 * i / n)
+        pts.append((x0 + rr + rr * math.cos(a), (y0 + y1) / 2 + rr * math.sin(a)))
+    return ccw(pts)
+
+
 def boss_pos(side, B=BF):
     return mirror_pts(B['BOSS_POS'], side)
 
@@ -566,18 +660,31 @@ def check_princess(B=BF):
     R, L = right_outline_pts(B), left_outline_pts(B)
     xc, zc, y0, y1 = rod_axis(B)
     xr, _ = rod_line(B)
-    xl = left_root_x(B)
+    xl = left_edge_x((y0 + y1) / 2, B)       # real (smoothed) root edge at the middle of the bar
     # bar + hand under the left wing
     m = min(dist_to_poly((x, y), L) if point_in_poly((x, y), L) else -1
             for y in (y0, (y0 + y1) / 2, y1) for x in (xc - B['ROD_R'], xc + 0.3))
     res['bar under the left wing (margin)'] = (m >= 0.4, round(m, 2))
-    # right wing passes under the left wing's root with clearance (left underside z = 0)
+    # right wing passes under the left wing's root; the closest point is the up-stop
     def left_under(x):            # wing underside incl. the rounded rim at the root edge
         z = left_z(x, B)[0]
         e = x - (xl - B['RIM_R'])
         return z + (B['RIM_R'] - math.sqrt(max(0.0, B['RIM_R'] ** 2 - e * e)) if e > 0 else 0.0)
-    gaps = [left_under(x) - right_z(x, B)[1] for x in [xc + i * 0.05 for i in range(0, int((xl - xc) / 0.05) + 1)]]
-    res['right wing under the left root (min gap)'] = (min(gaps) >= 0.15, round(min(gaps), 3))
+    xs_ = [xc + B['ROD_R'] + i * 0.05 for i in range(0, int((xl - xc - B['ROD_R']) / 0.05) + 1)]
+    gaps = [(left_under(x) - right_z(x, B)[1], x) for x in xs_]
+    g, gx = min(gaps)
+    res['up-stop: right top under the left root (gap, lever)'] = (0.03 <= g <= 0.15, (round(g, 3), round(gx - xc, 2)))
+    res['up rocking before contact (deg)'] = (math.degrees(g / (gx - xc)) < 4, round(math.degrees(g / (gx - xc)), 2))
+    res['down rocking before the ears touch (deg)'] = (math.degrees(B['EAR_GAP'] / B['EAR_LEN']) < 4,
+                                                      round(math.degrees(B['EAR_GAP'] / B['EAR_LEN']), 2))
+    er = ear_rects(B)
+    m = min(dist_to_poly((x, y), L) if point_in_poly((x, y), L) else -1
+            for r in er for x in (r[0], r[1]) for y in (r[2], r[3]))
+    res['ears under the left wing (margin)'] = (m >= 0.3, round(m, 2))
+    res['ears on the bar (inside its straight part)'] = (er[0][2] >= y0 - 1e-6 and er[1][3] <= y1 + 1e-6,
+                                                         (round(er[0][2] - y0, 2), round(y1 - er[1][3], 2)))
+    res['thickest section'] = (max(right_z(x / 10.0, B)[1] - right_z(x / 10.0, B)[0] for x in range(0, 230)) <= 1.5 + 1e-9,
+                               round(max(left_z(-x / 10.0, B)[1] - left_z(-x / 10.0, B)[0] for x in range(0, 230)), 3))
     # snap: lip tip inner point to the wing underside vs bar diameter
     ri = B['ROD_R'] - B['GRIP']
     gap = -(zc - ri * math.sin(math.radians(B['LIP_ANG'])))
@@ -1070,6 +1177,51 @@ if RHINO:
         log("  !! %s: could not cut the wing shape (%s)" % (what, "; ".join(fails)))
         return None
 
+    def fillet_rim(w, what):
+        """round the wing rim; if Rhino refuses all edges at once, try top and bottom separately and
+        smaller radii, and log what was done"""
+        if w is None:
+            return None
+        B = BF
+
+        def faces_up(e):
+            nz = 0.0
+            mid = e.PointAt(e.Domain.Mid)
+            for i in e.AdjacentFaces():
+                f = e.Brep.Faces[i]
+                ok, u, v = f.ClosestPoint(mid)
+                if ok:
+                    nz += f.NormalAt(u, v).Z
+            return nz > 0
+
+        def try_fillet(b, pick, r):
+            idx, rad = List[int](), List[float]()
+            for e in b.Edges:
+                if pick(e):
+                    idx.Add(e.EdgeIndex)
+                    rad.Add(r)
+            if idx.Count == 0:
+                return None
+            try:
+                res = rg.Brep.CreateFilletEdges(b, idx, rad, rad, rg.BlendType.Fillet, rg.RailType.RollingBall, TOL)
+            except Exception:
+                return None
+            return res[0] if res is not None and len(res) > 0 and res[0].IsSolid else None
+        sharp = sharp_edges()
+        for r in (B['RIM_R'], 0.3, 0.25, 0.2):
+            res = try_fillet(w, sharp, r)
+            if res is not None:
+                if r != B['RIM_R']:
+                    log("  .. %s: rounded with R%.2f (R%.2f failed)" % (what, r, B['RIM_R']))
+                return res
+            top = try_fillet(w, lambda e: sharp(e) and faces_up(e), r)
+            both = try_fillet(top, lambda e: sharp(e) and not faces_up(e), r) if top is not None else None
+            if both is not None:
+                log("  .. %s: rounded top and bottom separately with R%.2f" % (what, r))
+                return both
+        log("  !! %s: rim could not be rounded (left sharp)" % what)
+        return w
+
     def bosses_and_holes(side):
         B = BF
         bh = B['BOSS_H'] + 0.2
@@ -1093,7 +1245,7 @@ if RHINO:
             w = wing_shape(left_z, left_outline_pts(), "left wing")
         if w is None:
             return None
-        w = fillet_edges(w, sharp_edges(), B['RIM_R'], "wing rim")
+        w = fillet_rim(w, "right wing rim" if side > 0 else "left wing rim")
         if side > 0:
             xc, zc, y0, y1 = rod_axis()
             bar = rg.Brep.CreatePipe(rg.LineCurve(rg.Point3d(xc, y0, zc), rg.Point3d(xc, y1, zc)), B['ROD_R'],
@@ -1102,6 +1254,10 @@ if RHINO:
                 log("  !! bar pipe failed")
             else:
                 adds = [solidify(bar[0], "bar")] + adds
+            for r in ear_rects():          # anti-wobble ears (rounded free end)
+                x0, x1, ya, yb, z0, z1 = r
+                rr = (yb - ya) / 2
+                adds.append(union([box(x0 + rr, x1, ya, yb, z0, z1), cyl(x0 + rr, (ya + yb) / 2, z0, rr, z1 - z0)], "ear"))
         else:
             h0, h1 = hand_span()
             hook = extrude_closed(hand_profile(), "XZ", rg.Vector3d(0, h1 - h0 + 2.0, 0), "hook")

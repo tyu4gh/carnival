@@ -14,7 +14,6 @@ import kinder_rhino_build as K
 B, E = K.BF, K.EGG
 OUT = os.path.join(HERE, "out")
 os.makedirs(OUT, exist_ok=True)
-T = B['T']
 
 
 def wire(segs, wp):
@@ -94,6 +93,11 @@ def wing(side):
         for yy in (y0, y1):
             bar = bar.fuse(cq.Solid.makeSphere(B['ROD_R'], cq.Vector(xc, yy, zc)))
         w = w.union(cq.Workplane().add(bar))
+        for (x0, x1, ya, yb, z0, z1) in K.ear_rects():
+            rr = (yb - ya) / 2
+            ear = cq.Workplane().box(x1 - x0 - rr, yb - ya, z1 - z0).translate(((x0 + rr + x1) / 2, (ya + yb) / 2, (z0 + z1) / 2))
+            ear = ear.union(cq.Workplane().add(cq.Solid.makeCylinder(rr, z1 - z0, cq.Vector(x0 + rr, (ya + yb) / 2, z0))))
+            w = w.union(ear)
     else:
         w = rim_fillet(section_slab(K.left_z).intersect(prism(K.left_outline_pts(), -5, 5)))
         h0, h1 = K.hand_span()
@@ -156,7 +160,11 @@ if __name__ == "__main__":
                     ("forward 0.6", (0, 0.6, 0)), ("back 0.6", (0, -0.6, 0))):
         v = vol(wr.translate(d).intersect(wl)) - base_iv
         print("  interlock: right wing moved %-22s -> collision %.3f mm3 %s" % (name, v, "BLOCKED" if v > 1e-3 else
-              ("free (bar slides in the hand: friction grip only)" if d[1] else "FREE")))
+              "FREE"))
+    xc_, zc_, _, _ = K.rod_axis()
+    for ang in (3.0, -3.0):
+        v = vol(wr.rotate((xc_, 0, zc_), (xc_, 1, zc_), ang).intersect(wl)) - base_iv
+        print("  interlock: right wing rocked %+.0f deg about the bar -> collision %.3f mm3 %s" % (ang, v, "BLOCKED" if v > 1e-3 else "FREE"))
     a = cq.Assembly()
     cols = {"wing_L": (0.80, 0.62, 0.95), "wing_R": (0.96, 0.55, 0.78), "clip_L": (1, 1, 1), "clip_R": (1, 1, 1)}
     for n, s in asm.items():
