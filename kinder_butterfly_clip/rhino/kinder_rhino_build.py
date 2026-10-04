@@ -497,6 +497,26 @@ def _runs(pts, keep, closed):
     return [r for r in runs if len(r) >= 4]
 
 
+def arc_chain(pts, closed=True):
+    """smooth outline as circular arcs through point triples (lines where collinear). Fallback for
+    Rhino when a spline outline will not extrude: same arc/line pipeline as the clip and hinge."""
+    n = len(pts)
+    seq = list(pts) + ([pts[0]] if closed else [])
+    if (len(seq) - 1) % 2:
+        seq = seq[:-2] + [seq[-1]] if not closed else list(pts[:-1]) + [pts[0]]
+    segs = []
+    for i in range(0, len(seq) - 2, 2):
+        a, m, b = seq[i], seq[i + 1], seq[i + 2]
+        cross = (m[0] - a[0]) * (b[1] - a[1]) - (m[1] - a[1]) * (b[0] - a[0])
+        if abs(cross) < 1e-6 * max(1e-9, math.hypot(b[0] - a[0], b[1] - a[1])) ** 2:
+            segs.append(('L', a, b))
+        else:
+            segs.append(('A', a, m, b))
+    if len(seq) % 2 == 0:                     # one point left over
+        segs.append(('L', seq[-2], seq[-1]))
+    return segs
+
+
 def band_outline(B=BF):
     """footprint of the female thick band (before trimming to the left wing): the right wing root
     edge offset outwards by THICK_BAND, closed by a large box towards +X. Only the root-side arc
@@ -744,26 +764,42 @@ if RHINO:
             b.Flip()
         return b if b.IsSolid else None
 
-    def extrude_curve(crv, z0, h, what):
-        """closed planar curve at height z0 -> capped solid z0..z0+h. Three methods, first that
-        gives a closed solid wins: Extrusion.Create (= ExtrudeCrv), surface + planar caps, rebuilt curve."""
-        if crv is None:
-            log("  !! %s: outline curve is None" % what)
-            return None
-        c = crv.DuplicateCurve()
-        c.Translate(rg.Vector3d(0, 0, z0 - c.PointAtStart.Z))
-        if not c.IsClosed:
-            c.MakeClosed(TOL)
+    def describe(c):
+        try:
+            return "closed=%s periodic=%s planar=%s degree=%d points=%d length=%.2f" % (
+                c.IsClosed, c.IsPeriodic, c.IsPlanar(), c.Degree, c.ToNurbsCurve().Points.Count, c.GetLength())
+        except Exception as ex:
+            return "(describe failed: %s)" % ex
+
+    def extrude_curve(crv, z0, h, what, fallback_segs=None):
+        """closed planar curve at height z0 -> capped solid z0..z0+h. Tries Extrusion.Create
+        (= ExtrudeCrv), planar face + ExtrudeSrf, side surface + planar caps, a rebuilt curve, and
+        finally fallback_segs (arc/line chain, same pipeline as the clip / hinge strap)."""
+        tries = []
+        c = None
+        if crv is not None:
+            c = crv.DuplicateCurve()
+            c.Translate(rg.Vector3d(0, 0, z0 - c.PointAtStart.Z))
+            if not c.IsClosed:
+                c.MakeClosed(TOL)
 
         def m_extrusion(cv):
             ext = rg.Extrusion.Create(cv, h, True)
             if ext is None:
-                return None
+                return None, "Extrusion.Create returned None"
             b = ext.ToBrep(True)
-            bb = b.GetBoundingBox(True)
-            if bb.Max.Z < z0 + h / 2:          # extruded the other way (curve plane normal = -Z)
+            if b is None:
+                return None, "Extrusion.ToBrep returned None"
+            if b.GetBoundingBox(True).Max.Z < z0 + h / 2:     # extruded towards -Z
                 b.Translate(rg.Vector3d(0, 0, h))
-            return _closed_solid(b)
+            return b, ""
+
+        def m_face(cv):
+            caps = rg.Brep.CreatePlanarBreps(cv, TOL)
+            if caps is None or len(caps) == 0:
+                return None, "CreatePlanarBreps returned nothing"
+            path = rg.LineCurve(rg.Point3d(0, 0, z0), rg.Point3d(0, 0, z0 + h))
+            return caps[0].Faces[0].CreateExtrusion(path, True), ""
 
         def m_caps(cv):
             side = rg.Surface.CreateExtrusion(cv, rg.Vector3d(0, 0, h)).ToBrep()
@@ -773,22 +809,53 @@ if RHINO:
             for k in (cv, top):
                 caps = rg.Brep.CreatePlanarBreps(k, TOL)
                 if caps is None or len(caps) == 0:
-                    return None
+                    return None, "CreatePlanarBreps returned nothing"
                 pieces.extend(caps)
             j = rg.Brep.JoinBreps(blist(pieces), TOL)
-            return _closed_solid(j[0]) if j is not None and len(j) == 1 else None
+            if j is None or len(j) != 1:
+                return None, "JoinBreps gave %s pieces" % (0 if j is None else len(j))
+            return j[0], ""
 
-        for name, fn, cv in (("Extrusion.Create", m_extrusion, c), ("surface + caps", m_caps, c),
-                             ("rebuilt curve", m_extrusion, c.Rebuild(80, 3, True))):
+        methods = []
+        if c is not None:
+            methods = [("Extrusion.Create", m_extrusion, lambda: c), ("planar face + ExtrudeSrf", m_face, lambda: c),
+                       ("surface + planar caps", m_caps, lambda: c),
+                       ("rebuilt curve", m_extrusion, lambda: c.Rebuild(80, 3, True))]
+        for name, fn, get in methods:
             try:
-                b = fn(cv) if cv is not None else None
+                b, why = fn(get())
+                if b is not None:
+                    if b.SolidOrientation == rg.BrepSolidOrientation.Inward:
+                        b.Flip()
+                    if b.IsSolid:
+                        return b
+                    why = "result not closed (%d naked edges)" % sum(
+                        1 for e in b.Edges if e.Valence == rg.EdgeAdjacency.Naked)
             except Exception as ex:
-                b = None
-                log("  .. %s: %s raised %s" % (what, name, ex))
-            if b is not None:
-                return b
-        log("  !! %s: could not make a closed solid (curve added to _Debug)" % what)
-        DEBUG_CRV.append(c)
+                why = "raised %s: %s" % (type(ex).__name__, ex)
+            tries.append("%s: %s" % (name, why))
+        if fallback_segs is not None:
+            try:
+                b = extrude_closed(fallback_segs, "XY", rg.Vector3d(0, 0, h), what + " (arc chain)")
+                if b is not None:
+                    b.Translate(rg.Vector3d(0, 0, z0))
+                    if b.IsSolid:
+                        if tries:
+                            log("  .. %s: spline outline would not extrude, used the arc-chain outline" % what)
+                            for t_ in tries:
+                                log("       " + t_)
+                            if c is not None:
+                                log("       curve: " + describe(c))
+                        return b
+                tries.append("arc chain: no closed solid")
+            except Exception as ex:
+                tries.append("arc chain raised %s: %s" % (type(ex).__name__, ex))
+        log("  !! %s: could not make a closed solid (outline added to _Debug)" % what)
+        for t_ in tries:
+            log("       " + t_)
+        if c is not None:
+            log("       curve: " + describe(c))
+            DEBUG_CRV.append(c)
         return None
 
     def box(x0, x1, y0, y1, z0, z1):
@@ -879,8 +946,14 @@ if RHINO:
         return rg.Curve.CreateInterpolatedCurve(pts3(pts2d, z), 3)
 
     def prism(pts2d, z0, z1, what):
-        """vertical extrusion of a closed outline (dense point list -> periodic NURBS)"""
-        return extrude_curve(interp(pts2d, z0, closed=True), z0, z1 - z0, what)
+        """vertical extrusion of a closed outline (dense point list -> periodic NURBS;
+        arc-chain outline as fallback)"""
+        try:
+            crv = interp(pts2d, z0, closed=True)
+        except Exception as ex:
+            log("  .. %s: interpolation raised %s" % (what, ex))
+            crv = None
+        return extrude_curve(crv, z0, z1 - z0, what, fallback_segs=arc_chain(pts2d))
 
     def pipe(crv, r, what):
         res = rg.Brep.CreatePipe(crv, r, False, rg.PipeCapMode.Round, True, TOL, ATOL)
@@ -949,8 +1022,10 @@ if RHINO:
             cl.Add(interp(arc, B['THICK_Z0']))
             cl.Add(rg.PolylineCurve(pts3(box_pts, B['THICK_Z0'])))
             band_crv = rg.Curve.JoinCurves(cl, TOL)
+            band_segs = arc_chain(arc, closed=False) + [('L', box_pts[i], box_pts[i + 1])
+                                                        for i in range(len(box_pts) - 1)]
             band = inter(extrude_curve(band_crv[0] if band_crv is not None and len(band_crv) else None,
-                                       B['THICK_Z0'], 0.5 - B['THICK_Z0'], "band A"),
+                                       B['THICK_Z0'], 0.5 - B['THICK_Z0'], "band A", fallback_segs=band_segs),
                          prism(offset_closed(own, B['THICK_INSET']), B['THICK_Z0'] - 1, 1.0, "band B"),
                          "thick root band")
             adds.append(band)
@@ -1120,7 +1195,27 @@ if RHINO:
                 doc.Objects.AddCurve(c2, a)
         doc.Views.Redraw()
         fails = [m for m in LOG if m.strip().startswith("!!")]
-        print("---- done: %d warnings%s" % (len(fails), "" if not fails else " (see above)"))
+        made = ", ".join(k for k in ('R', 'L', 'C') if parts.get(k) is not None)
+        summary = "kinder_rhino_build: parts built = %s; %d warnings" % (made, len(fails))
+        print("---- done: " + summary)
+        import os
+        path = None
+        for d in (os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else None,
+                  os.path.expanduser("~")):
+            if d:
+                try:
+                    path = os.path.join(d, "kinder_build_log.txt")
+                    with open(path, "w") as f:
+                        f.write(summary + "\n" + "\n".join(LOG) + "\n")
+                    break
+                except Exception:
+                    path = None
+        if fails:
+            try:
+                Rhino.UI.Dialogs.ShowMessage(summary + "\n\n" + "\n".join(LOG[-40:]) +
+                                             ("\n\nFull log: %s" % path if path else ""), "Kinder toy build log")
+            except Exception:
+                pass
 
     if __name__ == "__main__":
         main()
