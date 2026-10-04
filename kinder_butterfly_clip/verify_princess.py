@@ -51,18 +51,10 @@ def vol(s):
         return 0.0
 
 
-def right_slab():
-    x0, x1 = K.bend_x()
-    lo_b, lo_t = K.bend_z(-40)
-    hi_b, hi_t = K.bend_z(40)
-    n = 24
-    bt = [(x0 + (x1 - x0) * i / n, K.bend_z(x0 + (x1 - x0) * i / n)[1]) for i in range(n + 1)]
-    bb = [(x0 + (x1 - x0) * i / n, K.bend_z(x0 + (x1 - x0) * i / n)[0]) for i in range(n + 1)]
-    w = (cq.Workplane("XZ").moveTo(-40, lo_t).lineTo(x0, lo_t)
-         .spline(bt[1:], tangents=[(1, 0), (1, 0)], includeCurrent=True)
-         .lineTo(40, hi_t).lineTo(40, hi_b).lineTo(x1, hi_b)
-         .spline(bb[::-1][1:], tangents=[(-1, 0), (-1, 0)], includeCurrent=True)
-         .lineTo(-40, lo_b).close())
+def section_slab(fz):
+    top, bot = K.section_pts(fz, -40, 40, 0.5)
+    w = (cq.Workplane("XZ").moveTo(*top[0]).spline(top[1:], includeCurrent=True).lineTo(*bot[-1])
+         .spline(bot[::-1][1:], includeCurrent=True).close())
     return w.extrude(40, both=True)
 
 
@@ -76,35 +68,38 @@ def bosses_and_holes(side):
     return adds, cuts
 
 
+def rim_fillet(w):
+    sh = w.val()
+    sharp = []
+    for e in sh.Edges():
+        fs = list(e.ancestors(sh, "Face"))
+        if len(fs) != 2:
+            continue
+        p = e.positionAt(0.5)
+        if abs(fs[0].normalAt(p).dot(fs[1].normalAt(p))) < math.cos(math.radians(30)):
+            sharp.append(e)
+    try:
+        return w.newObject([sh.fillet(B['RIM_R'], sharp)])
+    except Exception as ex:
+        print("  rim fillet skipped:", ex)
+        return w
+
+
 def wing(side):
     adds, cuts = bosses_and_holes(side)
     if side > 0:
-        w = right_slab().intersect(prism(K.right_outline_pts(), -5, 5))
-        sh = w.val()
-        sharp = []
-        for e in sh.Edges():
-            fs = list(e.ancestors(sh, "Face"))
-            if len(fs) != 2:
-                continue
-            p = e.positionAt(0.5)
-            n0, n1 = fs[0].normalAt(p), fs[1].normalAt(p)
-            if abs(n0.dot(n1)) < math.cos(math.radians(30)):
-                sharp.append(e)
-        try:
-            w = w.newObject([w.val().fillet(B['RIM_R'], sharp)])
-        except Exception as ex:
-            print("  right rim fillet skipped:", ex)
+        w = rim_fillet(section_slab(K.right_z).intersect(prism(K.right_outline_pts(), -5, 5)))
         xc, zc, y0, y1 = K.rod_axis()
         bar = cq.Solid.makeCylinder(B['ROD_R'], y1 - y0, cq.Vector(xc, y0, zc), cq.Vector(0, 1, 0))
         for yy in (y0, y1):
             bar = bar.fuse(cq.Solid.makeSphere(B['ROD_R'], cq.Vector(xc, yy, zc)))
         w = w.union(cq.Workplane().add(bar))
     else:
-        w = prism(K.wing_outline_pts(-1), 0, T)
-        w = w.faces(">Z").edges().fillet(B['RIM_R']).faces("<Z").edges().fillet(B['RIM_R'])
+        w = rim_fillet(section_slab(K.left_z).intersect(prism(K.left_outline_pts(), -5, 5)))
         h0, h1 = K.hand_span()
-        hand = wire(K.hand_profile(), cq.Workplane("XZ")).close().extrude(-(h1 - h0)).translate((0, h0, 0))
-        w = w.union(hand)
+        hook = wire(K.hand_profile(), cq.Workplane("XZ")).close().extrude(-(h1 - h0 + 2)).translate((0, h0 - 1, 0))
+        hook = hook.intersect(prism(K.hand_plan(), -4, 0.6))
+        w = w.union(hook)
     for a in adds:
         w = w.union(a)
     for c in cuts:

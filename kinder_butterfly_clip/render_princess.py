@@ -34,19 +34,19 @@ def top2d(ax, items, title, below=False):
 fig = plt.figure(figsize=(18, 11))
 top2d(fig.add_subplot(231), items, "Assembled - top view")
 draw(fig.add_subplot(232, projection="3d"), items, 30, -62, "Assembled - 3/4 view")
-top2d(fig.add_subplot(233), items, "Underside (mirrored): LEGO-hand clip on the bar, 2 hair clips", below=True)
+top2d(fig.add_subplot(233), items, "Underside (mirrored): small hook on the bar, 2 hair clips", below=True)
 ins = [(mv("wing_L", (0, 0, 0)), LIL, 1), (mv("clip_L", (0, 0, 0)), WHITE, 1),
        (mv("wing_R", (9, 0, 0)), ROSE, 1), (mv("clip_R", (9, 0, 0)), WHITE, 1)]
-draw(fig.add_subplot(234, projection="3d"), ins, 38, -55, "Assembly: push the right wing's bar sideways into the hand")
+draw(fig.add_subplot(234, projection="3d"), ins, 38, -55, "Assembly: push the right wing's bar sideways into the hook")
 # joint section through the jewel
 ax = fig.add_subplot(235)
 gy = sum(K.hand_span()) / 2
 for nm, c in (("wing_L", "#9b6bd6"), ("wing_R", "#e0559a")):
     for p, q in trimesh.intersections.mesh_plane(a[nm], plane_normal=(0, 1, 0), plane_origin=(0, gy, 0)):
         ax.plot([p[0], q[0]], [p[2], q[2]], color=c, lw=1.4)
-ax.set_xlim(-9, 13); ax.set_ylim(-3.0, 3.0); ax.set_aspect("equal"); ax.grid(alpha=.3)
+ax.set_xlim(-23, 24); ax.set_ylim(-3.5, 3.5); ax.set_aspect("equal"); ax.grid(alpha=.3)
 ax.set_xlabel("x (mm)"); ax.set_ylabel("z (mm)")
-ax.set_title("Joint section through the hand\npurple = left wing + hand   pink = right wing: bar, flat root, S-bend")
+ax.set_title("Front section (true scale) - purple: left wing + hook, pink: right wing arc + bar")
 pk = [(L("ppack_%d" % i), c, 1) for i, c in enumerate((ROSE, LIL, WHITE, WHITE))]
 for s in ("base_hinge", "cap"):
     m = L("egg_Egg_Closed_" + s)
@@ -62,3 +62,14 @@ top2d(fig.add_subplot(121), sep, "Separated: two hair clips (top)")
 draw(fig.add_subplot(122, projection="3d"), sep, 35, -75, "Separated (3/4)")
 plt.tight_layout(); plt.savefig(os.path.join(IMG, "princess_separated.png"), dpi=100)
 print("ok")
+
+# close-up of the joint
+fig, ax = plt.subplots(figsize=(9, 4))
+for nm, c in (("wing_L", "#9b6bd6"), ("wing_R", "#e0559a")):
+    for p, q in trimesh.intersections.mesh_plane(a[nm], plane_normal=(0, 1, 0), plane_origin=(0, gy, 0)):
+        ax.plot([p[0], q[0]], [p[2], q[2]], color=c, lw=1.6)
+ax.set_xlim(-4, 8); ax.set_ylim(-2.5, 2.0); ax.set_aspect("equal"); ax.grid(alpha=.3)
+ax.set_xlabel("x (mm)"); ax.set_ylabel("z (mm)")
+ax.set_title("Joint close-up: the right wing thins out into a round bar held by the left wing's hook")
+plt.tight_layout(); plt.savefig(os.path.join(IMG, "princess_joint.png"), dpi=110)
+print("ok joint")
