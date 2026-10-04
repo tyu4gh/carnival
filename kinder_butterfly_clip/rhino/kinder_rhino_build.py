@@ -972,53 +972,103 @@ if RHINO:
             return abs(ns[0] * ns[1]) < cmin
         return pred
 
-    def section_slab(fz, what):
+    def section_slab(fz, what, mode):
         """a wing's smooth XZ section (top / bottom as functions of x) extruded along Y.
-        Spline version first (side surface + planar caps); arc-chain version as fallback."""
-        X0, X1, Y0, Y1 = -40.0, 40.0, -40.0, 40.0
+        mode 'spline': interpolated section curves; mode 'arc': arc-chain section (the pipeline
+        the hinge strap uses). Kinked side faces are split so booleans see clean faces."""
+        X0, X1, Y0, Y1 = -30.0, 30.0, -25.0, 25.0
         top, bot = section_pts(fz, X0, X1, 0.5)
-        tries = []
-        try:
-            def spl(pts):
-                l = List[rg.Point3d]()
-                for (x, z) in pts:
-                    l.Add(rg.Point3d(x, 0.0, z))
-                return rg.Curve.CreateInterpolatedCurve(l, 3)
-            P = lambda p: rg.Point3d(p[0], 0.0, p[1])
-            cl = List[rg.Curve]()
-            for c in (spl(top), rg.LineCurve(P(top[-1]), P(bot[-1])), spl(bot[::-1]), rg.LineCurve(P(bot[0]), P(top[0]))):
-                cl.Add(c)
-            j = rg.Curve.JoinCurves(cl, TOL)
-            prof = j[0] if j is not None and len(j) == 1 and j[0].IsClosed else None
-            if prof is None:
-                tries.append("section did not join into one closed curve")
-            else:
-                prof.Translate(rg.Vector3d(0, Y0, 0))
-                vec = rg.Vector3d(0, Y1 - Y0, 0)
-                side = rg.Surface.CreateExtrusion(prof, vec).ToBrep()
-                end = prof.DuplicateCurve()
-                end.Translate(vec)
-                pieces = [side]
-                for k in (prof, end):
-                    caps = rg.Brep.CreatePlanarBreps(k, TOL)
-                    if caps is None or len(caps) == 0:
-                        raise ValueError("CreatePlanarBreps returned nothing")
-                    pieces.extend(caps)
-                jb = rg.Brep.JoinBreps(blist(pieces), TOL)
-                b = _closed_solid(jb[0]) if jb is not None and len(jb) == 1 else None
-                if b is not None:
-                    return b
-                tries.append("spline slab not closed")
-        except Exception as ex:
-            tries.append("spline slab raised %s: %s" % (type(ex).__name__, ex))
-        segs = arc_chain(top, closed=False)
-        segs = chain(segs, [bot[-1]]) + arc_chain(bot[::-1], closed=False)
-        segs = chain(segs, [top[0]])
-        b = extrude_closed(segs, "XZ", rg.Vector3d(0, Y1 - Y0, 0), what + " (arc chain)")
-        if b is not None:
-            b.Translate(rg.Vector3d(0, Y0, 0))
-            log("  .. %s: spline version failed (%s), used arcs" % (what, "; ".join(tries)))
+        vec = rg.Vector3d(0, Y1 - Y0, 0)
+        if mode == "arc":
+            segs = arc_chain(top, closed=False)
+            segs = chain(segs, [bot[-1]]) + arc_chain(bot[::-1], closed=False)
+            segs = chain(segs, [top[0]])
+            b = extrude_closed(segs, "XZ", vec, what + " (arcs)")
+            if b is not None:
+                b.Translate(rg.Vector3d(0, Y0, 0))
+            return b
+
+        def spl(pts):
+            l = List[rg.Point3d]()
+            for (x, z) in pts:
+                l.Add(rg.Point3d(x, 0.0, z))
+            return rg.Curve.CreateInterpolatedCurve(l, 3)
+        P = lambda p: rg.Point3d(p[0], 0.0, p[1])
+        cl = List[rg.Curve]()
+        for c in (spl(top), rg.LineCurve(P(top[-1]), P(bot[-1])), spl(bot[::-1]), rg.LineCurve(P(bot[0]), P(top[0]))):
+            cl.Add(c)
+        j = rg.Curve.JoinCurves(cl, TOL)
+        if j is None or len(j) != 1 or not j[0].IsClosed:
+            log("  .. %s: section did not join into one closed curve" % what)
+            return None
+        prof = j[0]
+        prof.Translate(rg.Vector3d(0, Y0, 0))
+        side = rg.Surface.CreateExtrusion(prof, vec).ToBrep()
+        side.Faces.SplitKinkyFaces(Rhino.RhinoMath.DefaultAngleTolerance, True)
+        end = prof.DuplicateCurve()
+        end.Translate(vec)
+        pieces = [side]
+        for k in (prof, end):
+            caps = rg.Brep.CreatePlanarBreps(k, TOL)
+            if caps is None or len(caps) == 0:
+                log("  .. %s: planar end cap failed" % what)
+                return None
+            pieces.extend(caps)
+        jb = rg.Brep.JoinBreps(blist(pieces), TOL)
+        b = _closed_solid(jb[0]) if jb is not None and len(jb) == 1 else None
+        if b is None:
+            log("  .. %s: spline section did not close" % what)
         return b
+
+    def outline_prism(pts2d, z0, z1, what, mode):
+        """vertical prism of a closed outline: 'spline' (periodic NURBS) or 'arc' (arc chain)"""
+        if mode == "arc":
+            b = extrude_closed(arc_chain(pts2d), "XY", rg.Vector3d(0, 0, z1 - z0), what + " (arcs)")
+            if b is not None:
+                b.Translate(rg.Vector3d(0, 0, z0))
+            return b
+        return prism(pts2d, z0, z1, what)
+
+    def wing_shape(fz, outline_pts, what):
+        """slab (smooth section) ∩ outline prism. Tries spline / arc versions of both; a result is
+        only accepted if it is one closed solid no larger than the outline (never the raw slab)."""
+        xs, ys = [p[0] for p in outline_pts], [p[1] for p in outline_pts]
+        fails = []
+        for sm in ("spline", "arc"):
+            try:
+                slab = section_slab(fz, what + " section", sm)
+            except Exception as ex:
+                slab = None
+                fails.append("%s section raised %s" % (sm, ex))
+            if slab is None:
+                fails.append("%s section: no solid" % sm)
+                continue
+            for om in ("spline", "arc"):
+                try:
+                    outline = outline_prism(outline_pts, -5.0, 5.0, what + " outline", om)
+                    if outline is None:
+                        fails.append("%s outline: no solid" % om)
+                        continue
+                    res = rg.Brep.CreateBooleanIntersection(slab, outline, TOL)
+                except Exception as ex:
+                    fails.append("%s/%s intersection raised %s" % (sm, om, ex))
+                    continue
+                if res is None or len(res) == 0:
+                    fails.append("%s section / %s outline: intersection failed" % (sm, om))
+                    continue
+                b = sorted(res, key=_vol)[-1]
+                bb = b.GetBoundingBox(True)
+                ok = (b.IsSolid and bb.Max.X - bb.Min.X < max(xs) - min(xs) + 0.5 and
+                      bb.Max.Y - bb.Min.Y < max(ys) - min(ys) + 0.5 and bb.Max.Z - bb.Min.Z < 5.0)
+                if not ok:
+                    fails.append("%s section / %s outline: result rejected (size %.1f x %.1f x %.1f, solid=%s)"
+                                 % (sm, om, bb.Max.X - bb.Min.X, bb.Max.Y - bb.Min.Y, bb.Max.Z - bb.Min.Z, b.IsSolid))
+                    continue
+                if fails:
+                    log("  .. %s: used %s section + %s outline after: %s" % (what, sm, om, "; ".join(fails)))
+                return b
+        log("  !! %s: could not cut the wing shape (%s)" % (what, "; ".join(fails)))
+        return None
 
     def bosses_and_holes(side):
         B = BF
@@ -1037,15 +1087,12 @@ if RHINO:
         adds, cuts = bosses_and_holes(side)
         if side > 0:
             log("Butterfly: P1 right wing (arc + bar)")
-            slab = section_slab(right_z, "right wing section")
-            outline = prism(right_outline_pts(), -5.0, 5.0, "right wing outline")
+            w = wing_shape(right_z, right_outline_pts(), "right wing")
         else:
             log("Butterfly: P2 left wing (plate + hook)")
-            slab = section_slab(left_z, "left wing section")
-            outline = prism(left_outline_pts(), -5.0, 5.0, "left wing outline")
-        if slab is None or outline is None:
+            w = wing_shape(left_z, left_outline_pts(), "left wing")
+        if w is None:
             return None
-        w = inter(slab, outline, "wing shape")
         w = fillet_edges(w, sharp_edges(), B['RIM_R'], "wing rim")
         if side > 0:
             xc, zc, y0, y1 = rod_axis()
