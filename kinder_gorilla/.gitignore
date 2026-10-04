@@ -1,0 +1,4 @@
+out/*.blend1
+out/packed_*.stl
+img/s_*.png
+__pycache__/
