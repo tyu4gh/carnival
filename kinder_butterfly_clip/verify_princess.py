@@ -32,14 +32,6 @@ def prism(pts, z0, z1):
     return cq.Workplane("XY").workplane(offset=z0).spline(pts, periodic=True).close().extrude(z1 - z0)
 
 
-def band_prism(z0, z1):
-    arc, box_pts = K.band_outline()
-    w = cq.Workplane("XY").workplane(offset=z0).moveTo(*arc[0]).spline(arc[1:], includeCurrent=True)
-    for p in box_pts[1:-1]:
-        w = w.lineTo(*p)
-    return w.close().extrude(z1 - z0)
-
-
 def tube(pts, z, r):
     """swept circle along an open spline + round end caps"""
     path = cq.Workplane("XY").spline([(x, y, z) for (x, y) in pts], includeCurrent=False)
@@ -59,44 +51,64 @@ def vol(s):
         return 0.0
 
 
-def wing(side):
-    own, other = K.wing_outline_pts(side), K.wing_outline_pts(-side)
-    plate = prism(own, 0, T)
-    plate = plate.faces(">Z").edges().fillet(B['FILLET_TOP'])
-    plate = plate.faces("<Z").edges().fillet(B['FILLET_BOT'])
-    w = plate
-    for run in K.border_runs(side):
-        w = w.union(tube(run, T, B['DECO_R']))
-    for v in K.vein_pts(side):
-        w = w.union(tube(v, T, B['DECO_R']))
-    for (x, y, r) in K.pearl_pts(side):
-        w = w.union(cq.Workplane().add(cq.Solid.makeSphere(r, cq.Vector(x, y, T - 0.1))))
+def right_slab():
+    x0, x1 = K.bend_x()
+    lo_b, lo_t = K.bend_z(-40)
+    hi_b, hi_t = K.bend_z(40)
+    n = 24
+    bt = [(x0 + (x1 - x0) * i / n, K.bend_z(x0 + (x1 - x0) * i / n)[1]) for i in range(n + 1)]
+    bb = [(x0 + (x1 - x0) * i / n, K.bend_z(x0 + (x1 - x0) * i / n)[0]) for i in range(n + 1)]
+    w = (cq.Workplane("XZ").moveTo(-40, lo_t).lineTo(x0, lo_t)
+         .spline(bt[1:], tangents=[(1, 0), (1, 0)], includeCurrent=True)
+         .lineTo(40, hi_t).lineTo(40, hi_b).lineTo(x1, hi_b)
+         .spline(bb[::-1][1:], tangents=[(-1, 0), (-1, 0)], includeCurrent=True)
+         .lineTo(-40, lo_b).close())
+    return w.extrude(40, both=True)
+
+
+def bosses_and_holes(side):
     bh = B['BOSS_H'] + 0.2
     rt = B['BOSS_D'] / 2
     rb = rt - bh * math.tan(math.radians(B['BOSS_DRAFT']))
-    for (x, y) in K.boss_pos(side):
-        w = w.union(rev_full(K.pin_profile(rb, rt, bh), (x, y, -B['BOSS_H'])))
+    adds = [rev_full(K.pin_profile(rb, rt, bh), (x, y, -B['BOSS_H'])) for (x, y) in K.boss_pos(side)]
     cuts = [rev_full(K.hole_profile(B['CLIP_HOLE_D'] / 2, B['CLIP_HOLE_DEPTH']), (x, y, -B['BOSS_H']))
             for (x, y) in K.boss_pos(side)]
-    if side < 0:
-        band = band_prism(B['THICK_Z0'], 0.5).intersect(
-            prism(K.offset_closed(own, B['THICK_INSET']), B['THICK_Z0'] - 1, 1.0))
-        w = w.union(band)
-        cuts.append(prism(K.offset_closed(other, -B['CLR']), B['THICK_Z0'] - 0.3, B['LIP_Z0']))
-        for c in cuts:
-            w = w.cut(c)
-        hearts = K.heart_windows()
-        for (p, r) in K.tab_discs():
-            w = w.union(cq.Workplane().add(cq.Solid.makeCylinder(r, 0.5 - B['TAB_Z0'], cq.Vector(p[0], p[1], B['TAB_Z0']))))
-        for (c, wd, tab) in hearts:
-            w = w.cut(prism(K.heart_pts(c, wd), B['FLOOR_Z'], T + 1))
+    return adds, cuts
+
+
+def wing(side):
+    adds, cuts = bosses_and_holes(side)
+    if side > 0:
+        w = right_slab().intersect(prism(K.right_outline_pts(), -5, 5))
+        sh = w.val()
+        sharp = []
+        for e in sh.Edges():
+            fs = list(e.ancestors(sh, "Face"))
+            if len(fs) != 2:
+                continue
+            p = e.positionAt(0.5)
+            n0, n1 = fs[0].normalAt(p), fs[1].normalAt(p)
+            if abs(n0.dot(n1)) < math.cos(math.radians(30)):
+                sharp.append(e)
+        try:
+            w = w.newObject([w.val().fillet(B['RIM_R'], sharp)])
+        except Exception as ex:
+            print("  right rim fillet skipped:", ex)
+        xc, zc, y0, y1 = K.rod_axis()
+        bar = cq.Solid.makeCylinder(B['ROD_R'], y1 - y0, cq.Vector(xc, y0, zc), cq.Vector(0, 1, 0))
+        for yy in (y0, y1):
+            bar = bar.fuse(cq.Solid.makeSphere(B['ROD_R'], cq.Vector(xc, yy, zc)))
+        w = w.union(cq.Workplane().add(bar))
     else:
-        cuts.append(prism(K.offset_closed(other, -B['CLR']), B['TONGUE_T'], T + 1))
-        for c in cuts:
-            w = w.cut(c)
-        g, r0, r1 = K.gem()
-        w = w.union(rev_full(K.pin_profile(r0 + K.EPS, r1, B['GEM_H'] + K.EPS),
-                             (g[0], g[1], B['TONGUE_T'] - K.EPS)))
+        w = prism(K.wing_outline_pts(-1), 0, T)
+        w = w.faces(">Z").edges().fillet(B['RIM_R']).faces("<Z").edges().fillet(B['RIM_R'])
+        h0, h1 = K.hand_span()
+        hand = wire(K.hand_profile(), cq.Workplane("XZ")).close().extrude(-(h1 - h0)).translate((0, h0, 0))
+        w = w.union(hand)
+    for a in adds:
+        w = w.union(a)
+    for c in cuts:
+        w = w.cut(c)
     return w
 
 
@@ -135,17 +147,21 @@ if __name__ == "__main__":
         for j in range(i + 1, 4):
             v = vol(asm[names[i]].intersect(asm[names[j]]))
             pair = names[i] + "/" + names[j]
-            if v > 1e-4 and not ("clip" in pair and "wing" in pair):
+            if v > 1e-4 and pair in ("wing_L/wing_R", "wing_R/wing_L"):
+                pass
+            elif v > 1e-4 and not ("clip" in pair and "wing" in pair):
                 print("  ASM CLASH", pair, round(v, 4))
             elif v > 1e-4:
                 print("  press fit %s %.3f mm3 (pin interference, intended)" % (pair, v))
-    print("wing_R / wing_L interference: %.4f mm3" % vol(wr.intersect(wl)))
+    base_iv = vol(wr.intersect(wl))
+    print("wing_R / wing_L interference: %.4f mm3 (bar in the hand bore: GRIP friction fit, intended)" % base_iv)
     # ---- interlock: every escape direction of the right wing must hit the left wing
     for name, d in (("up 0.3", (0, 0, 0.3)), ("down 0.3", (0, 0, -0.3)),
                     ("out to the right 0.6", (0.6, 0, 0)), ("in to the left 0.6", (-0.6, 0, 0)),
                     ("forward 0.6", (0, 0.6, 0)), ("back 0.6", (0, -0.6, 0))):
-        v = vol(wr.translate(d).intersect(wl))
-        print("  interlock: right wing moved %-22s -> collision %.3f mm3 %s" % (name, v, "BLOCKED" if v > 1e-3 else "free"))
+        v = vol(wr.translate(d).intersect(wl)) - base_iv
+        print("  interlock: right wing moved %-22s -> collision %.3f mm3 %s" % (name, v, "BLOCKED" if v > 1e-3 else
+              ("free (bar slides in the hand: friction grip only)" if d[1] else "FREE")))
     a = cq.Assembly()
     cols = {"wing_L": (0.80, 0.62, 0.95), "wing_R": (0.96, 0.55, 0.78), "clip_L": (1, 1, 1), "clip_R": (1, 1, 1)}
     for n, s in asm.items():

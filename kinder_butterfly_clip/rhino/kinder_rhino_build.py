@@ -9,12 +9,12 @@ How to run (Rhino 7 / 8 / 9 WIP, Windows or Mac):
 Everything is parametric: edit EGG / BF below and run again.
 Objects created by a previous run (layer tree "KinderToy") are deleted first.
 
-Toy v3 (4 parts, injection moulded ABS, no metal, all straight-pull tools). Wing shape from the
-user's model buttclip_Ver.1.1.3dm; the two wing roots overlap in a lens-shaped zone:
-    P1 right wing  - MALE: root edge is a thin smooth tongue that slides in from the right UNDER
-                     the left wing; a small jewel on the tongue clicks into the middle heart window
-    P2 left wing   - FEMALE: thicker root band with a side slot under its upper lip; 3 heart
-                     windows in the lip (2 with support tabs below = straight-pull shut-offs)
+Toy v4 (4 parts, injection moulded ABS, no metal, no surface patterns). Wing shape from the
+user's model buttclip_Ver.1.1.3dm; the right wing's root slides under the left wing:
+    P1 right wing  - one smooth surface: a completely flat, lower root (~9 mm) under the left wing,
+                     a smooth S-bend up to full height; the root edge is a straight round bar
+    P2 left wing   - plain plate; underneath, a "LEGO minifig hand" C-clip that snaps onto the bar
+                     (C bore along Y: one side core in the left-wing tool, like a LEGO hand)
     P3 clip x2     - identical one-piece ABS spring clip, press-fits under either wing
 
 Output layers (parent "KinderToy"):
@@ -82,14 +82,16 @@ EGG = dict(
 )
 
 # =====================================================================================
-# PARAMETERS - "FAIRYTALE PRINCESS" BUTTERFLY HAIR CLIP v3  (4 parts, ABS, no metal)
-# assembled frame: X = span (right wing +X), Y = up the head, Z = up. Both wings: plate z 0..T.
+# PARAMETERS - "FAIRYTALE PRINCESS" BUTTERFLY HAIR CLIP v4  (4 parts, ABS, no metal)
+# assembled frame: X = span (right wing +X), Y = up the head, Z = up.
 # Wing shape = the user's model buttclip_Ver.1.1.3dm (layer "wing right", mirrored for the left),
-# slid together by OVERLAP so the two root edges overlap in a lens-shaped zone:
-#   left wing  (P2, FEMALE): thicker root band + side slot open towards +X, upper lip on top,
-#                            3 heart windows in the lip (2 with support tabs below, 1 snap window)
-#   right wing (P1, MALE)  : thin smooth tongue (TONGUE_T) slides in from the right UNDER the
-#                            left wing's lip; a small jewel on the tongue clicks into the heart.
+# slid together by OVERLAP. No surface patterns - plain, smooth wings.
+#   P2 left wing  : flat plate z 0..T; underneath it a "LEGO minifig hand": a C-clip whose bore
+#                   runs along Y and opens towards +X
+#   P1 right wing : one smooth surface. Its root (about 1 cm) is a completely flat, lower plate
+#                   that lies under the left wing; a smooth S-bend lifts it to the full height.
+#                   The root edge is straight for ROD_LEN and has a round (cylindrical) section:
+#                   a bar that snaps sideways into the left wing's hand.
 # =====================================================================================
 BF = dict(
     # right-wing outline, through-points (user model, root edge at x = 0.25, centre gap 0.5 mm)
@@ -99,42 +101,29 @@ BF = dict(
               (24.83, 8.23), (25.15, 11.63), (23.85, 14.73), (20.6, 15.42), (17.27, 14.65),
               (14.06, 13.45), (11.02, 11.87), (8.21, 9.91), (5.62, 7.68), (3.21, 5.23), (1.13, 2.52)],
     SAMPLES=6,                   # Catmull-Rom samples per span (dense outline used everywhere)
-    OVERLAP=7.5,                 # each wing slides OVERLAP/2 towards the centre
-    T=2.0,                       # wing plate thickness (as the user's model)
-    FILLET_TOP=0.8, FILLET_BOT=0.8,   # rounded rim like the user's model
-    # ---- joint (all z in the wing frame, plate z 0..T)
-    CLR=0.15,                    # clearance tongue <-> slot / step
-    TONGUE_T=0.95,               # male tongue thickness (z 0..TONGUE_T)
-    LIP_Z0=1.0,                  # female: slot ceiling = underside of the upper lip (lip z LIP_Z0..T)
-    FLOOR_Z=-0.1,                # female: top of the support tabs (slot floor)
-    THICK_Z0=-1.2,               # female: bottom of the thicker root band
-    THICK_BAND=1.8,              # female: band width around the slot (behind the tongue tip)
-    THICK_INSET=1.0,             # band stays this far inside the left outline (clear of the rim fillet)
-    TAB_INSET=0.12,              # tab = disc on the heart's inscribed circle, this much smaller
-    TAB_Z0=-1.05,                # tab bottom (just above THICK_Z0: no coplanar faces)
-    HEART_W=2.8,                 # tab-window hearts (width)
-    HEART_TABS=[-4.6, 3.0],      # y of the 2 support-tab hearts; they straddle the slot back wall
-    HEART_TAB_IN=0.2,            # tab-heart centre this far inside the slot from the back wall
-    GEM_HEART_W=3.8, GEM_Y=-0.9,  # snap window heart (in the middle of the lens)
-    GEM_H=0.35, GEM_CLR=0.1,     # jewel on the tongue: 45 deg frustum, sized to the heart's
-                                 # largest inscribed circle minus GEM_CLR at the lip underside
-    EDGE_SOFT=0.25,              # fillet of window / step top edges
-    # ---- raised decoration for the UV colour-change coating (half-round beads, ~0.3 high)
-    DECO_R=0.30,                 # bead radius (pipe centre on the top face -> 0.30 high)
-    BORDER_OFF=1.7,              # inner border bead offset from the outline
-    TRIM=1.0,                    # decoration stops this far from the other wing's footprint
-    VEINS=[[(9.0, 3.6), (12.4, 6.6), (16.0, 9.2), (19.4, 11.0), (21.6, 10.6), (21.9, 8.6),
-            (20.4, 7.9), (19.5, 9.0)],                                      # fore-wing scroll
-           [(10.4, 1.6), (13.8, 2.9), (17.0, 4.3), (19.6, 5.7)],            # fore-wing vein
-           [(8.6, -3.4), (11.2, -6.4), (13.8, -9.4), (16.0, -11.2), (17.2, -9.9), (16.2, -8.7),
-            (15.1, -9.4)],                                                  # hind-wing scroll
-           [(10.8, -2.4), (13.4, -3.9), (15.6, -5.8)]],                     # hind-wing vein
-    PEARLS=[(19.5, 9.0, 0.55), (15.1, -9.4, 0.5)],     # pearls at the scroll ends
-    BORDER_PEARL_R=0.45, BORDER_PEARL_PITCH=5.0,       # pearls strung on the border bead
-    # ---- clip interface (same one-piece ABS clip, shorter for this wing)
+    OVERLAP=11.0,                # each wing slides OVERLAP/2 towards the centre (flat root ~9 mm)
+    T=2.0,                       # wing thickness (as the user's model)
+    RIM_R=0.5,                   # rounded rim, top and bottom, both wings
+    # ---- right wing: flat low root + smooth S-bend
+    LOW_TOP=-0.35,               # top of the flat root plate (left wing underside is z = 0)
+    T_LOW=1.4,                   # thickness of the flat root plate
+    BEND_CLR=0.6,                # the bend starts this far right of the left wing's root edge
+    BEND_W=3.5,                  # length of the S-bend (smootherstep, C2)
+    # ---- bar on the right wing's root edge
+    ROD_LEN=10.0,                # straight, round-section part of the root edge
+    ROD_R=0.9,                   # bar radius (diameter 1.8)
+    ROD_IN=0.15,                 # bar sticks out this much past the flat plate end
+    SOFT_K=1.2,                  # smoothing of the corners where the straight edge meets the curve
+    # ---- left wing hand (C-clip, constant section along Y)
+    GRIP=0.02,                   # bore radius = ROD_R - GRIP (light friction grip)
+    HAND_WALL=0.6,               # wall around the bore
+    MOUTH_CLR=0.1,               # mouth = T_LOW + 2 x this (the flat plate passes through it)
+    HAND_END_CLR=0.5,            # hand is this much shorter than the bar at each end
+    HAND_FILLET=0.5,             # rounded bottom corners of the hand
+    # ---- clip interface (same one-piece ABS clip)
     BOSS_D=5.0, BOSS_H=1.5, BOSS_DRAFT=1.0,
     CLIP_PIN_D=2.25, CLIP_HOLE_D=2.20, CLIP_PIN_H=2.1, CLIP_HOLE_DEPTH=2.3,
-    BOSS_POS=[(10.5, -9.0), (10.5, 5.0)],      # right wing, assembled frame; mirrored for the left
+    BOSS_POS=[(11.0, -11.75), (11.0, 2.25)],   # right wing, assembled frame; mirrored for the left
     CLIP_W=7.0, CLIP_L=22.0, CLIP_T=1.4, CLIP_PIN_Y=[4.0, 18.0],
     ASM_OFFSET=(110.0, 0.0, 0.0),
     PARTS_OFFSET=(170.0, 0.0, 0.0),
@@ -143,10 +132,10 @@ BF = dict(
 # packing in the closed capsule: part, (rot about X deg, rot about Z deg, dx, dy, dz) applied to
 # the part's assembled-frame geometry; found and verified (no clash with the real shell) by
 # ../verify_princess.py
-PACK = [("R", (-90, 0, -8.973, -2.650, 22.631)),
-        ("L", (90, 0, 8.973, 2.650, 22.689)),
-        ("C", (90, 0, -3.500, 6.650, 11.810)),
-        ("C", (90, 180, 3.500, -6.650, 11.810))]
+PACK = [("R", (90, 0, -8.366, -2.440, 22.689)),
+        ("L", (90, 0, 7.223, 1.910, 22.689)),
+        ("C", (90, 0, -3.500, 6.940, 11.810)),
+        ("C", (90, 180, 3.500, -6.940, 11.810))]
 
 EPS = 0.05   # overlap used so that booleans never meet coplanar / tangent faces
 
@@ -321,7 +310,7 @@ def check_chain(segs, closed=False, tol=1e-6):
     return True
 
 
-# ---------------- princess butterfly v3 maths (plain python, no numpy) ----------------
+# ---------------- princess butterfly v4 maths (plain python, no numpy) ----------------
 def cr_closed(pts, n):
     """closed centripetal Catmull-Rom through pts, n samples per span"""
     m = len(pts)
@@ -359,144 +348,6 @@ def ccw(pts):
     return pts if _area(pts) > 0 else pts[::-1]
 
 
-def offset_closed(pts, d):
-    """offset a closed polyline inward by d (d < 0: outward)"""
-    is_ccw = _area(pts) > 0
-    out = []
-    n = len(pts)
-    for i in range(n):
-        a, b = pts[i - 1], pts[(i + 1) % n]
-        tx, ty = _unit((b[0] - a[0], b[1] - a[1]))
-        nx, ny = (-ty, tx) if is_ccw else (ty, -tx)        # inward normal
-        out.append((pts[i][0] + nx * d, pts[i][1] + ny * d))
-    return out
-
-
-def wing_outline_pts(side, B=BF):
-    """dense closed outline (CCW) of the right (+1) or left (-1) wing in the assembled frame"""
-    s = B['OVERLAP'] / 2
-    pts = [(x - s, y) for (x, y) in cr_closed(B['WING_PTS'], B['SAMPLES'])]
-    return ccw(mirror_pts(pts, side))
-
-
-def point_in_poly(p, poly):
-    x, y = p
-    inside = False
-    n = len(poly)
-    for i in range(n):
-        x1, y1 = poly[i - 1]
-        x2, y2 = poly[i]
-        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
-            inside = not inside
-    return inside
-
-
-def dist_to_poly(p, poly):
-    best = 1e9
-    for i in range(len(poly)):
-        a, b = poly[i - 1], poly[i]
-        vx, vy = b[0] - a[0], b[1] - a[1]
-        L2 = vx * vx + vy * vy
-        u = max(0.0, min(1.0, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2)) if L2 else 0.0
-        best = min(best, math.hypot(p[0] - a[0] - u * vx, p[1] - a[1] - u * vy))
-    return best
-
-
-def x_hits(poly, y):
-    """sorted x of the polygon crossings with the horizontal line y"""
-    xs = []
-    for i in range(len(poly)):
-        (x1, y1), (x2, y2) = poly[i - 1], poly[i]
-        if (y1 > y) != (y2 > y):
-            xs.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
-    return sorted(xs)
-
-
-def lens_x(y, B=BF):
-    """x range of the overlap lens at height y: (right wing root edge, left wing root edge)"""
-    return x_hits(wing_outline_pts(+1, B), y)[0], x_hits(wing_outline_pts(-1, B), y)[-1]
-
-
-def heart_pts(c, w, n=28):
-    """closed heart (point down), width w, centred on c"""
-    s = w / 32.0
-    pts = []
-    for i in range(n):
-        t = 2 * math.pi * (i + 0.5) / n
-        x = 16 * math.sin(t) ** 3
-        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
-        pts.append((c[0] + x * s, c[1] + (y + 2.5) * s))
-    return ccw(pts)
-
-
-def heart_windows(B=BF):
-    """[(centre, width, has_tab)]: 2 tab hearts straddling the slot back wall + the snap heart"""
-    out = []
-    for y in B['HEART_TABS']:
-        xb = lens_x(y, B)[0] - B['CLR']             # slot back wall
-        out.append(((xb + B['HEART_TAB_IN'], y), B['HEART_W'], True))
-    x0, x1 = lens_x(B['GEM_Y'], B)
-    out.append((((x0 + x1) / 2, B['GEM_Y']), B['GEM_HEART_W'], False))
-    return out
-
-
-def inscribed(c, w):
-    """largest circle inside the heart window (centre, radius) - grid search"""
-    h = heart_pts(c, w)
-    best = (0.0, c)
-    for i in range(-20, 21):
-        for j in range(-30, 21):
-            p = (c[0] + i * w / 100.0, c[1] + j * w / 100.0)
-            if point_in_poly(p, h):
-                d = dist_to_poly(p, h)
-                if d > best[0]:
-                    best = (d, p)
-    return best[1], best[0]
-
-
-def tab_discs(B=BF):
-    """support tabs under the tab hearts: discs on the inscribed circle, TAB_INSET inside the window
-    (the window is the straight-pull shut-off; a disc avoids the heart cusp)"""
-    out = []
-    for (c, w, tab) in heart_windows(B):
-        if tab:
-            p, r = inscribed(c, w)
-            out.append((p, r - B['TAB_INSET']))
-    return out
-
-
-def gem(B=BF):
-    """jewel on the tongue: (centre, r_bottom, r_top). Centre = largest inscribed circle of the
-    snap heart; radius at the lip underside = inscribed radius - GEM_CLR (45 deg flanks)."""
-    c, w = [(c, w) for (c, w, tab) in heart_windows(B) if not tab][0]
-    best = inscribed(c, w)[::-1]
-    r_lip = best[0] - B['GEM_CLR']
-    r0 = r_lip + (B['LIP_Z0'] - B['TONGUE_T'])
-    return best[1], r0, r0 - B['GEM_H']
-
-
-def gem_centre(B=BF):
-    return gem(B)[0]
-
-
-def _runs(pts, keep, closed):
-    n = len(pts)
-    if all(keep):
-        return [list(pts) + ([pts[0]] if closed else [])]
-    start = next(i for i in range(n) if not keep[i]) if closed else -1
-    runs, cur = [], []
-    for k in range(1, n + 1):
-        i = (start + k) % n
-        if keep[i]:
-            cur.append(pts[i])
-        elif cur:
-            runs.append(cur)
-            cur = []
-    if cur:
-        runs.append(cur)
-    return [r for r in runs if len(r) >= 4]
-
-
 def arc_chain(pts, closed=True):
     """smooth outline as circular arcs through point triples (lines where collinear). Fallback for
     Rhino when a spline outline will not extrude: same arc/line pipeline as the clip and hinge."""
@@ -517,49 +368,127 @@ def arc_chain(pts, closed=True):
     return segs
 
 
-def band_outline(B=BF):
-    """footprint of the female thick band (before trimming to the left wing): the right wing root
-    edge offset outwards by THICK_BAND, closed by a large box towards +X. Only the root-side arc
-    of the offset is used - the far side (wing notch) would pinch into a cusp.
-    Returns (arc points for an open spline, polyline points that close it)."""
-    off = offset_closed(wing_outline_pts(+1, B), -B['THICK_BAND'])
-    runs = _runs(off, [p[0] < 6.0 for p in off], True)
-    arc = max(runs, key=len)
-    if arc[0][1] < arc[-1][1]:
-        arc = arc[::-1]                       # top -> bottom
-    return arc, [arc[-1], (40.0, arc[-1][1] - 30.0), (40.0, arc[0][1] + 30.0), arc[0]]
-
-
-def deco_keep(p, side, B=BF):
-    """decoration point allowed: away from the other wing's footprint (symmetric trim)"""
-    other = wing_outline_pts(-side, B)
-    return not point_in_poly(p, other) and dist_to_poly(p, other) >= B['TRIM']
-
-
-def border_runs(side, B=BF):
-    off = offset_closed(wing_outline_pts(side, B), B['BORDER_OFF'])[::2]
-    return _runs(off, [deco_keep(p, side, B) for p in off], True)
-
-
-def vein_pts(side, B=BF):
+def wing_outline_pts(side, B=BF):
+    """dense closed outline (CCW) of the user's wing, right (+1) or left (-1), assembled frame"""
     s = B['OVERLAP'] / 2
-    return [mirror_pts([(x - s, y) for (x, y) in v], side) for v in B['VEINS']]
+    pts = [(x - s, y) for (x, y) in cr_closed(B['WING_PTS'], B['SAMPLES'])]
+    return ccw(mirror_pts(pts, side))
 
 
-def pearl_pts(side, B=BF):
-    """scroll-end pearls + pearls strung along the border bead every BORDER_PEARL_PITCH"""
-    s = B['OVERLAP'] / 2
-    out = [(side * (x - s), y, r) for (x, y, r) in B['PEARLS']]
-    for run in border_runs(side, B):
-        acc, nxt = 0.0, B['BORDER_PEARL_PITCH'] / 2
-        for a, b in zip(run, run[1:]):
-            d = math.hypot(b[0] - a[0], b[1] - a[1])
-            while acc + d >= nxt:
-                u = (nxt - acc) / d
-                out.append((a[0] + u * (b[0] - a[0]), a[1] + u * (b[1] - a[1]), B['BORDER_PEARL_R']))
-                nxt += B['BORDER_PEARL_PITCH']
-            acc += d
+def x_hits(poly, y):
+    """sorted x of the polygon crossings with the horizontal line y"""
+    xs = []
+    for i in range(len(poly)):
+        (x1, y1), (x2, y2) = poly[i - 1], poly[i]
+        if (y1 > y) != (y2 > y):
+            xs.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
+    return sorted(xs)
+
+
+def point_in_poly(p, poly):
+    return len([x for x in x_hits(poly, p[1]) if x > p[0]]) % 2 == 1
+
+
+def dist_to_poly(p, poly):
+    best = 1e9
+    for i in range(len(poly)):
+        a, b = poly[i - 1], poly[i]
+        vx, vy = b[0] - a[0], b[1] - a[1]
+        L2 = vx * vx + vy * vy
+        u = max(0.0, min(1.0, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2)) if L2 else 0.0
+        best = min(best, math.hypot(p[0] - a[0] - u * vx, p[1] - a[1] - u * vy))
+    return best
+
+
+def _root_span(x_cut, B=BF):
+    """y-interval where the original right-wing root edge lies left of x_cut"""
+    R = wing_outline_pts(+1, B)
+    ys = [i / 20.0 for i in range(-300, 301)]
+    inside = [y for y in ys if x_hits(R, y) and x_hits(R, y)[0] < x_cut]
+    return (min(inside), max(inside)) if inside else (0.0, 0.0)
+
+
+def rod_line(B=BF):
+    """x of the straight root edge, and (y0, y1) of the bar. The edge is moved right until
+    ROD_LEN + 2 mm of it is straight (the bar keeps 1 mm away from the rounded corners)."""
+    lo, hi = -10.0, 10.0
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        a, b = _root_span(mid, B)
+        if b - a < B['ROD_LEN'] + 2.0:
+            lo = mid
+        else:
+            hi = mid
+    a, b = _root_span(hi, B)
+    c = (a + b) / 2
+    return hi, (c - B['ROD_LEN'] / 2, c + B['ROD_LEN'] / 2)
+
+
+def right_outline_pts(B=BF):
+    """right wing outline with the straight root edge (smooth max with x = x_rod)"""
+    xr, _ = rod_line(B)
+    k = B['SOFT_K']
+    out = []
+    for (x, y) in wing_outline_pts(+1, B):
+        out.append((0.5 * (x + xr + math.sqrt((x - xr) ** 2 + k * k)), y))
     return out
+
+
+def rod_axis(B=BF):
+    """bar axis: (xc, zc, y0, y1)"""
+    xr, (y0, y1) = rod_line(B)
+    zc = B['LOW_TOP'] - B['T_LOW'] / 2
+    return xr + B['ROD_R'] - B['ROD_IN'], zc, y0, y1
+
+
+def bend_x(B=BF):
+    """start / end x of the S-bend: starts BEND_CLR right of the left wing's root edge"""
+    x0 = max(p[0] for p in wing_outline_pts(-1, B)) + B['BEND_CLR']
+    return x0, x0 + B['BEND_W']
+
+
+def bend_z(x, B=BF):
+    """(z_bottom, z_top) of the right wing at x: flat low root, C2 smootherstep, full plate"""
+    x0, x1 = bend_x(B)
+    u = min(1.0, max(0.0, (x - x0) / (x1 - x0)))
+    s = u * u * u * (u * (6 * u - 15) + 10)
+    top = B['LOW_TOP'] + (B['T'] - B['LOW_TOP']) * s
+    bot = (B['LOW_TOP'] - B['T_LOW']) + (0.0 - (B['LOW_TOP'] - B['T_LOW'])) * s
+    return bot, top
+
+
+def bend_profile(B=BF, x_from=-40.0, x_to=40.0, step=0.5):
+    """(top points, bottom points) of the right wing's XZ section, for interpolated curves"""
+    n = int((x_to - x_from) / step)
+    xs = [x_from + i * step for i in range(n + 1)]
+    return [(x, bend_z(x, B)[1]) for x in xs], [(x, bend_z(x, B)[0]) for x in xs]
+
+
+def hand_profile(B=BF):
+    """closed (x, z) section of the left wing's C-clip ("LEGO hand"); bore along Y, mouth to +X.
+    Top goes 0.3 into the left plate (z 0..T)."""
+    xc, zc, y0, y1 = rod_axis(B)
+    ri = B['ROD_R'] - B['GRIP']
+    w, rb = B['HAND_WALL'], B['HAND_FILLET']
+    m = B['T_LOW'] / 2 + B['MOUTH_CLR']
+    xr = xc + ri + 0.25                       # right face of the jaws
+    xb = xc - ri - w                          # back face
+    zb = zc - ri - w                          # bottom
+    zt = 0.3
+    qx = xc + math.sqrt(ri * ri - m * m)       # where the mouth meets the bore
+    c45 = math.cos(math.radians(45))
+    segs = [('L', (xr, zc + m), (xr, zt)), ('L', (xr, zt), (xb, zt)), ('L', (xb, zt), (xb, zb + rb)),
+            ('A', (xb, zb + rb), (xb + rb - rb * c45, zb + rb - rb * c45), (xb + rb, zb)),
+            ('L', (xb + rb, zb), (xr - rb, zb)),
+            ('A', (xr - rb, zb), (xr - rb + rb * c45, zb + rb - rb * c45), (xr, zb + rb)),
+            ('L', (xr, zb + rb), (xr, zc - m)), ('L', (xr, zc - m), (qx, zc - m)),
+            ('A', (qx, zc - m), (xc - ri, zc), (qx, zc + m)), ('L', (qx, zc + m), (xr, zc + m))]
+    return segs
+
+
+def hand_span(B=BF):
+    xc, zc, y0, y1 = rod_axis(B)
+    return y0 + B['HAND_END_CLR'], y1 - B['HAND_END_CLR']
 
 
 def boss_pos(side, B=BF):
@@ -569,41 +498,38 @@ def boss_pos(side, B=BF):
 def check_princess(B=BF):
     """layout sanity checks (pure python). Returns dict name -> (ok, detail)."""
     res = {}
-    R, L = wing_outline_pts(+1, B), wing_outline_pts(-1, B)
-    # overlap lens
-    ys = [y / 10.0 for y in range(-160, 160)]
-    lens = [(y,) + lens_x(y, B) for y in ys if len(x_hits(R, y)) and len(x_hits(L, y))]
-    lens = [l for l in lens if l[2] > l[1]]
-    res['lens (y range, max width)'] = (True, (round(lens[0][0], 1), round(lens[-1][0], 1),
-                                               round(max(l[2] - l[1] for l in lens), 2)))
-    # hearts: tab hearts straddle the back wall, snap heart inside the lens with margin
-    for (c, w, tab) in heart_windows(B):
-        hp = heart_pts(c, w)
-        if tab:
-            p, r = inscribed(c, w)
-            xb = lens_x(p[1], B)[0] - B['CLR']
-            r -= B['TAB_INSET']
-            res['tab y=%.1f: into band / under slot' % c[1]] = (xb - (p[0] - r) > 0.25 and p[0] + r - xb > 0.6,
-                                                               (round(xb - (p[0] - r), 2), round(p[0] + r - xb, 2)))
-        else:
-            m = min(min(p[0] - lens_x(p[1], B)[0], lens_x(p[1], B)[1] - p[0]) for p in hp)
-            res['snap heart inside lens'] = (m >= 0.6, round(m, 2))
-            gm = min(min(c[0] - lens_x(c[1], B)[0], lens_x(c[1], B)[1] - B['CLR'] - c[0]),
-                     dist_to_poly(c, R))
-            res['jewel margin on tongue'] = (gm >= gem(B)[1] + 0.5, round(gm, 2))
-            res['jewel r bottom / top'] = (gem(B)[2] > 0.3, (round(gem(B)[1], 3), round(gem(B)[2], 3)))
-    # bosses inside the wing
+    R, L = right_outline_pts(B), wing_outline_pts(-1, B)
+    xr, (y0, y1) = rod_line(B)
+    xc, zc, _, _ = rod_axis(B)
+    # the whole bar lies under the left wing, with margin
+    m = min(dist_to_poly((xc + dx, y), L) if point_in_poly((xc + dx, y), L) else -1
+            for y in (y0, (y0 + y1) / 2, y1) for dx in (-B['ROD_R'] - B['HAND_WALL'], B['ROD_R'] + 0.3))
+    res['bar + hand under the left wing (margin)'] = (m >= 1.0, round(m, 2))
+    # the flat root reaches under the whole overlap, the bend is outside the left wing
+    x0, x1 = bend_x(B)
+    res['bend clear of the left wing'] = (x0 > max(p[0] for p in L), (round(x0, 2), round(x1, 2)))
+    res['flat root width (bar -> bend)'] = (True, round(x0 - xr, 2))
+    # clearances in z
+    res['bar top below the left wing (gap)'] = (zc + B['ROD_R'] < -0.1, round(-(zc + B['ROD_R']), 2))
+    res['flat root top below the left wing (gap)'] = (B['LOW_TOP'] < -0.2, round(-B['LOW_TOP'], 2))
+    # snap: the bar (D) passes the mouth (2m) -> each jaw opens (D - 2m)/2
+    mth = B['T_LOW'] + 2 * B['MOUTH_CLR']
+    d = (2 * B['ROD_R'] - mth) / 2
+    Lj = (B['ROD_R'] + B['HAND_WALL'] / 2) * math.pi / 2      # jaw = quarter ring, cantilever
+    eps = 1.5 * B['HAND_WALL'] * d / Lj ** 2
+    res['snap: jaw opening / strain'] = (0 < d and eps < 0.03, (round(d, 3), "%.1f %%" % (eps * 100)))
+    # bosses inside the full-height part of each wing
     m = min(dist_to_poly(p, R) for p in boss_pos(+1, B))
-    res['boss margin'] = (m >= B['BOSS_D'] / 2 + 1.0, round(m, 2))
-    # decoration inside the outline, clear of the joint
-    deco = [q for v in vein_pts(+1, B) for q in v] + [(x, y) for (x, y, r) in pearl_pts(+1, B)]
-    m = min(dist_to_poly(p, R) if point_in_poly(p, R) else -1 for p in deco)
-    res['deco inside outline'] = (m >= 1.2, round(m, 2))
-    bad = [p for p in deco if not deco_keep(p, +1, B)]
-    res['deco clear of the joint'] = (not bad, len(bad))
-    xs, ys2 = [p[0] for p in R], [p[1] for p in R]
-    res['wing size'] = (True, (round(max(xs) - min(xs), 2), round(max(ys2) - min(ys2), 2)))
-    res['butterfly span'] = (True, round(2 * max(xs), 2))
+    res['boss margin to outline'] = (m >= B['BOSS_D'] / 2 + 0.6, round(m, 2))
+    bx = min(p[0] for p in boss_pos(+1, B))
+    res['boss / clip clear of the low root'] = (bend_z(bx - B['BOSS_D'] / 2, B)[0] > -0.3 and
+                                                bend_z(bx - B['CLIP_W'] / 2, B)[0] > -B['BOSS_H'] + 0.25,
+                                                (round(bend_z(bx - B['BOSS_D'] / 2, B)[0], 2),
+                                                 round(bend_z(bx - B['CLIP_W'] / 2, B)[0], 2)))
+    xs, ys = [p[0] for p in R], [p[1] for p in R]
+    res['right wing size'] = (True, (round(max(xs) - min(xs), 2), round(max(ys) - min(ys), 2)))
+    res['butterfly span'] = (True, round(max(xs) - min(p[0] for p in L), 2))
+    res['bar length / hand length'] = (True, (B['ROD_LEN'], round(hand_span(B)[1] - hand_span(B)[0], 2)))
     return res
 
 
@@ -933,7 +859,7 @@ if RHINO:
         # closed: cap sits on the lip and the snap rib bites into the groove -> keep 2 solids
         return [("base+hinge", union([base, strap], "base + hinge")), ("cap", cap_t)]
 
-    # ---------- princess butterfly v3 ----------
+    # ---------- princess butterfly v4 ----------
     def pts3(pts2d, z):
         l = List[rg.Point3d]()
         for (x, y) in pts2d:
@@ -955,24 +881,11 @@ if RHINO:
             crv = None
         return extrude_curve(crv, z0, z1 - z0, what, fallback_segs=arc_chain(pts2d))
 
-    def pipe(crv, r, what):
-        res = rg.Brep.CreatePipe(crv, r, False, rg.PipeCapMode.Round, True, TOL, ATOL)
-        if res is None or len(res) == 0:
-            log("  !! pipe %s failed" % what)
-            return None
-        return solidify(res[0], what)
-
-    def sharp_edges_at_z(z, near, min_deg=30.0, tol=0.01):
-        """edges lying at height z, with their midpoint accepted by near(x, y), whose two faces meet
-        at > min_deg (skips tangent fillet seams)"""
+    def sharp_edges(min_deg=30.0):
+        """edges whose two faces meet at more than min_deg (skips tangent seams)"""
         cmin = math.cos(math.radians(min_deg))
 
         def pred(e):
-            if not edge_at_z(z, tol)(e):
-                return False
-            m = e.PointAt(e.Domain.Mid)
-            if not near(m.X, m.Y):
-                return False
             fi = e.AdjacentFaces()
             if fi is None or len(fi) != 2:
                 return False
@@ -987,75 +900,111 @@ if RHINO:
             return abs(ns[0] * ns[1]) < cmin
         return pred
 
-    def wing(side):
-        """side +1: P1 right wing (MALE: thin tongue + jewel), -1: P2 left wing (FEMALE: thick band,
-        slot under the lip, heart windows + tabs). Both plates z 0..T in the assembled frame."""
+    def xz_spline(pts):
+        """open spline in the XZ plane, horizontal end tangents (joins the flat parts smoothly)"""
+        l = List[rg.Point3d]()
+        for (x, z) in pts:
+            l.Add(rg.Point3d(x, 0.0, z))
+        return rg.Curve.CreateInterpolatedCurve(l, 3, rg.CurveKnotStyle.Chord,
+                                                rg.Vector3d(1, 0, 0), rg.Vector3d(1, 0, 0))
+
+    def right_slab():
+        """the right wing's smooth section (flat low root, S-bend, full plate) extruded along Y"""
         B = BF
-        t = B['T']
-        own, other = wing_outline_pts(side), wing_outline_pts(-side)
-        log("Butterfly: %s wing" % ("P1 right (male)" if side > 0 else "P2 left (female)"))
-        plate = prism(own, 0.0, t, "wing plate")
-        if plate is None:
-            return None
-        plate = fillet_edges(plate, edge_at_z(t), B['FILLET_TOP'], "wing rim top")
-        plate = fillet_edges(plate, edge_at_z(0.0), B['FILLET_BOT'], "wing rim bottom")
-        adds = [plate]
-        # raised decoration (half-round beads + pearls) for the UV colour-change coating
-        for run in border_runs(side):
-            adds.append(pipe(interp(run, t), B['DECO_R'], "border bead"))
-        for v in vein_pts(side):
-            adds.append(pipe(interp(v, t), B['DECO_R'], "vein scroll"))
-        for (x, y, r) in pearl_pts(side):
-            adds.append(rg.Sphere(rg.Point3d(x, y, t - 0.1), r).ToBrep())
-        # clip bosses (1 deg draft, narrow at the free end)
+        x0, x1 = bend_x()
+        X0, X1, Y0, Y1 = -40.0, 40.0, -40.0, 40.0
+        lo_b, lo_t = bend_z(X0)
+        hi_b, hi_t = bend_z(X1)
+        n = 24
+        bend_t = [(x0 + (x1 - x0) * i / n, bend_z(x0 + (x1 - x0) * i / n)[1]) for i in range(n + 1)]
+        bend_b = [(x0 + (x1 - x0) * i / n, bend_z(x0 + (x1 - x0) * i / n)[0]) for i in range(n + 1)]
+        P = lambda x, z: rg.Point3d(x, 0.0, z)
+        cl = List[rg.Curve]()
+        for c in (rg.LineCurve(P(X0, lo_t), P(x0, lo_t)), xz_spline(bend_t), rg.LineCurve(P(x1, hi_t), P(X1, hi_t)),
+                  rg.LineCurve(P(X1, hi_t), P(X1, hi_b)), rg.LineCurve(P(X1, hi_b), P(x1, hi_b)),
+                  xz_spline(bend_b[::-1]), rg.LineCurve(P(x0, lo_b), P(X0, lo_b)),
+                  rg.LineCurve(P(X0, lo_b), P(X0, lo_t))):
+            cl.Add(c)
+        tries = []
+        try:
+            j = rg.Curve.JoinCurves(cl, TOL)
+            prof = j[0] if j is not None and len(j) == 1 and j[0].IsClosed else None
+            if prof is None:
+                tries.append("profile did not join into one closed curve")
+            else:
+                prof.Translate(rg.Vector3d(0, Y0, 0))
+                vec = rg.Vector3d(0, Y1 - Y0, 0)
+                side = rg.Surface.CreateExtrusion(prof, vec).ToBrep()
+                end = prof.DuplicateCurve()
+                end.Translate(vec)
+                pieces = [side]
+                for k in (prof, end):
+                    caps = rg.Brep.CreatePlanarBreps(k, TOL)
+                    if caps is None or len(caps) == 0:
+                        raise ValueError("CreatePlanarBreps returned nothing")
+                    pieces.extend(caps)
+                jb = rg.Brep.JoinBreps(blist(pieces), TOL)
+                b = _closed_solid(jb[0]) if jb is not None and len(jb) == 1 else None
+                if b is not None:
+                    return b
+                tries.append("spline slab not closed")
+        except Exception as ex:
+            tries.append("spline slab raised %s: %s" % (type(ex).__name__, ex))
+        # fallback: same XZ section as arcs/lines (the pipeline the hinge strap uses)
+        top, bot = bend_profile(x_from=X0, x_to=X1, step=0.25)
+        segs = [('L', top[0], (x0, lo_t))] + arc_chain([p for p in top if x0 <= p[0] <= x1], closed=False)
+        segs = chain(segs, [(X1, hi_t), (X1, hi_b), (x1, hi_b)])
+        segs += arc_chain([p for p in bot if x0 <= p[0] <= x1][::-1], closed=False)
+        segs = chain(segs, [(X0, lo_b), (X0, lo_t)])
+        b = extrude_closed(segs, "XZ", rg.Vector3d(0, Y1 - Y0, 0), "right wing section (arc chain)")
+        if b is not None:
+            b.Translate(rg.Vector3d(0, Y0, 0))
+            log("  .. right wing section: spline version failed (%s), used arcs" % "; ".join(tries))
+        return b
+
+    def bosses_and_holes(side):
+        B = BF
         bh = B['BOSS_H'] + 0.2
         r_top = B['BOSS_D'] / 2
         r_bot = r_top - bh * math.tan(math.radians(B['BOSS_DRAFT']))
-        for (x, y) in boss_pos(side):
-            adds.append(revolve(pin_profile(r_bot, r_top, bh), "clip boss", (x, y, -B['BOSS_H'])))
+        adds = [revolve(pin_profile(r_bot, r_top, bh), "clip boss", (x, y, -B['BOSS_H'])) for (x, y) in boss_pos(side)]
         cuts = [revolve(hole_profile(B['CLIP_HOLE_D'] / 2, B['CLIP_HOLE_DEPTH']), "clip hole",
                         (x, y, -B['BOSS_H'])) for (x, y) in boss_pos(side)]
-        if side < 0:
-            # FEMALE: thicker band behind the slot (right wing root edge + THICK_BAND, inside own rim)
-            arc, box_pts = band_outline()
-            cl = List[rg.Curve]()
-            cl.Add(interp(arc, B['THICK_Z0']))
-            cl.Add(rg.PolylineCurve(pts3(box_pts, B['THICK_Z0'])))
-            band_crv = rg.Curve.JoinCurves(cl, TOL)
-            band_segs = arc_chain(arc, closed=False) + [('L', box_pts[i], box_pts[i + 1])
-                                                        for i in range(len(box_pts) - 1)]
-            band = inter(extrude_curve(band_crv[0] if band_crv is not None and len(band_crv) else None,
-                                       B['THICK_Z0'], 0.5 - B['THICK_Z0'], "band A", fallback_segs=band_segs),
-                         prism(offset_closed(own, B['THICK_INSET']), B['THICK_Z0'] - 1, 1.0, "band B"),
-                         "thick root band")
-            adds.append(band)
-            part = union(adds, "left wing + band + decoration")
-            # side slot = right wing footprint + CLR, from below up to the lip underside
-            slot = prism(offset_closed(other, -B['CLR']), B['THICK_Z0'] - 0.3, B['LIP_Z0'], "slot")
-            part = diff(part, cuts + [slot], "clip holes / slot")
-            hearts = heart_windows()
-            tabs = [cyl(p[0], p[1], B['TAB_Z0'], r, 0.5 - B['TAB_Z0']) for (p, r) in tab_discs()]
-            part = union([part] + tabs, "support tabs")
-            wins = [prism(heart_pts(c, w), B['FLOOR_Z'], t + 1.0, "heart window") for (c, w, tab) in hearts]
-            part = diff(part, wins, "heart windows")
-        else:
-            # MALE: everything above TONGUE_T inside the left wing footprint (+CLR) is removed
-            part = union(adds, "right wing + decoration")
-            step = prism(offset_closed(other, -B['CLR']), B['TONGUE_T'], t + 1.0, "tongue step")
-            part = diff(part, cuts + [step], "clip holes / tongue")
-            g, r0, r1 = gem()
-            jewel = revolve(pin_profile(r0 + EPS, r1, B['GEM_H'] + EPS, 0.0, 0.0),
-                            "jewel", (g[0], g[1], B['TONGUE_T'] - EPS))
-            part = union([part, jewel], "tongue jewel")
-        # soften the sharp top edges of the tongue step / heart windows (not the decoration roots)
-        hw = heart_windows()
+        return adds, cuts
 
-        def near_joint(x, y):
-            if dist_to_poly((x, y), other) < B['CLR'] + 0.3:
-                return True
-            return any(math.hypot(x - c[0], y - c[1]) < w for (c, w, tab) in hw) if side < 0 else False
-        part = fillet_edges(part, sharp_edges_at_z(t, near_joint), B['EDGE_SOFT'], "window / step top edges")
-        return part
+    def wing(side):
+        """side +1: P1 right wing (smooth surface, flat low root, round bar on the root edge)
+        side -1: P2 left wing (flat plate + LEGO-hand C-clip underneath)"""
+        B = BF
+        adds, cuts = bosses_and_holes(side)
+        if side > 0:
+            log("Butterfly: P1 right wing (smooth surface + bar)")
+            slab = right_slab()
+            outline = prism(right_outline_pts(), -5.0, 5.0, "right wing outline")
+            if slab is None or outline is None:
+                return None
+            w = inter(slab, outline, "right wing shape")
+            w = fillet_edges(w, sharp_edges(), B['RIM_R'], "right wing rim")
+            xc, zc, y0, y1 = rod_axis()
+            bar = rg.Brep.CreatePipe(rg.LineCurve(rg.Point3d(xc, y0, zc), rg.Point3d(xc, y1, zc)), B['ROD_R'],
+                                     False, rg.PipeCapMode.Round, True, TOL, ATOL)
+            adds = [w] + ([solidify(bar[0], "bar")] if bar is not None and len(bar) else []) + adds
+            if len(adds) < 2 + len(boss_pos(side)):
+                log("  !! bar pipe failed")
+            part = union(adds, "right wing + bar + bosses")
+        else:
+            log("Butterfly: P2 left wing (plate + LEGO hand)")
+            plate = prism(wing_outline_pts(-1), 0.0, B['T'], "left wing plate")
+            if plate is None:
+                return None
+            plate = fillet_edges(plate, edge_at_z(B['T']), B['RIM_R'], "left wing rim top")
+            plate = fillet_edges(plate, edge_at_z(0.0), B['RIM_R'], "left wing rim bottom")
+            h0, h1 = hand_span()
+            hand = extrude_closed(hand_profile(), "XZ", rg.Vector3d(0, h1 - h0, 0), "hand")
+            if hand is not None:
+                hand.Translate(rg.Vector3d(0, h0, 0))
+            part = union([plate, hand] + adds, "left wing + hand + bosses")
+        return diff(part, cuts, "clip holes")
 
     def clip_part():
         B = BF
